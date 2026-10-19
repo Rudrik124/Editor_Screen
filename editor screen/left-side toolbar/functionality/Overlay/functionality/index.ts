@@ -1,0 +1,1 @@
+export { VideoIcon } from "./VideoIcon";
