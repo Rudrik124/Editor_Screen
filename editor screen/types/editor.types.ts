@@ -36,6 +36,18 @@ export interface TimelineClip {
   duration: number;
   color: string;
   thumbnails?: string[];
+  assetId?: string;
+  mediaUrl?: string;
+  presentationWidth?: number;
+}
+
+export interface VideoAsset {
+  id: string;
+  url: string;
+  name: string;
+  duration: number;
+  thumbnailUrl: string;
+  thumbnails: string[];
 }
 
 export interface Track {

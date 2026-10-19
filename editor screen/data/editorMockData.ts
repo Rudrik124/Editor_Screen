@@ -37,33 +37,13 @@ export const timelineTracks: Track[] = [
     id: "overlay-clip",
     label: "Overlay Clip",
     type: "video",
-    clips: [
-      {
-        id: "overlay-clip-clip",
-        label: "Overlay Clip  9.66",
-        type: "video",
-        start: 0,
-        duration: timelineDuration,
-        color: "#22262b",
-        thumbnails: Array.from({ length: 12 }, (_, index) => `frame-${index + 1}`),
-      },
-    ],
+    clips: [],
   },
   {
     id: "video",
     label: "Video",
     type: "video",
-    clips: [
-      {
-        id: "video-clip",
-        label: "Video  9.66",
-        type: "video",
-        start: 0,
-        duration: timelineDuration,
-        color: "#22262b",
-        thumbnails: Array.from({ length: 12 }, (_, index) => `frame-${index + 1}`),
-      },
-    ],
+    clips: [],
   },
   {
     id: "audio",
