@@ -1,9 +1,13 @@
-import { rulerLabels, timelineTracks } from "../data/editorMockData";
+import { useEffect, useRef } from "react";
+import { rulerLabels } from "../data/editorMockData";
 import { LeftSideToolbar } from "../left-side toolbar";
 import { TimelineTrack } from "./TimelineTrack";
 import { TimelineClip, Track, VideoAsset } from "../types/editor.types";
 import { TextElement } from "../left-side toolbar/functionality/text/functionality/text.types";
 import { getTextPresentationWidth } from "../left-side toolbar/functionality/text/functionality/getTextPresentationWidth";
+import { useEditorStore } from "../store/editor.store";
+import { TrimProcessor } from "../plugins/trim";
+
 
 interface TimelineWorkspaceProps {
   assets: VideoAsset[];
@@ -20,66 +24,152 @@ interface TimelineWorkspaceProps {
   onResizeText: (id: string, edge: "left" | "right", time: number) => void;
 }
 
-export function TimelineWorkspace({ assets, addedVideoIds, selectedVideoId, onAddVideo, onSelectVideo, textElements, selectedTextId, onSelectText, onAddText, onUpdateText, onDeleteText, onResizeText }: TimelineWorkspaceProps) {
-  const timelineDuration = Math.max(9.66, addedVideoIds.reduce((total, assetId) => total + (assets.find((asset) => asset.id === assetId)?.duration ?? 0), 0));
-  const renderedTracks: Track[] = [];
-  timelineTracks.forEach((track) => {
+export function TimelineWorkspace({
+  onSelectVideo,
+  textElements,
+  selectedTextId,
+  onSelectText,
+  onAddText,
+  onResizeText,
+}: TimelineWorkspaceProps) {
+  const storeTracks = useEditorStore((state) => state.tracks);
+  const storeClips = useEditorStore((state) => state.clips);
+  const selectedClipId = useEditorStore((state) => state.selectedClipId);
+  const selectClip = useEditorStore((state) => state.selectClip);
+  const currentTime = useEditorStore((state) => state.currentTime);
+  const setCurrentTime = useEditorStore((state) => state.setCurrentTime);
+  const setDuration = useEditorStore((state) => state.setDuration);
+  const timelineMainRef = useRef<HTMLDivElement>(null);
+
+  // Calculate timeline duration from active clips
+  const clipEnds = Object.values(storeClips).map((c) => c.start + c.duration);
+  const timelineDuration = Math.max(9.66, ...clipEnds, 0);
+
+  useEffect(() => {
+    setDuration(timelineDuration);
+  }, [timelineDuration, setDuration]);
+
+  // Handle timeline scrubber / seek on click
+  const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = timelineMainRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const clickX = e.clientX - rect.left - 44; // 44px ruler header offset
+    const availableWidth = rect.width - 60;
+    if (clickX >= 0 && availableWidth > 0) {
+      const clickTime = (clickX / availableWidth) * timelineDuration;
+      setCurrentTime(Math.max(0, Math.min(timelineDuration, clickTime)));
+    }
+  };
+
+  const renderedTracks: Track[] = storeTracks.map((track) => {
     if (track.id === "text") {
-      if (textElements.length === 0) {
-        renderedTracks.push(track);
-        return;
-      }
-      textElements.slice().reverse().forEach((element) => {
-        const creationIndex = textElements.findIndex((candidate) => candidate.id === element.id);
-        renderedTracks.push({
-        id: `text-track-${element.id}`,
-        label: "Text",
-        type: "text",
-        clips: [{
-          id: element.id,
-          label: element.content || "Text",
+      if (textElements.length > 0) {
+        return {
+          id: track.id,
+          label: track.label,
           type: "text",
-          start: element.start,
-          duration: element.duration,
-          color: "#075c61",
-          presentationWidth: getTextPresentationWidth(creationIndex),
-        }],
-        });
-      });
-      return;
-    }
-    if (track.id !== "video") {
-      renderedTracks.push({
-        ...track,
-        clips: track.clips.map((clip) => ({
-          ...clip,
-          duration: addedVideoIds.length > 0 ? timelineDuration : clip.duration,
-          label: addedVideoIds.length > 0 && clip.label ? clip.label.replace(/\s+\d+(?:\.\d+)?$/, ` ${timelineDuration.toFixed(2)}`) : clip.label,
-        })),
-      });
-      return;
-    }
-    let start = 0;
-    const clips = addedVideoIds
-      .map((assetId) => assets.find((candidate) => candidate.id === assetId))
-      .filter((asset): asset is VideoAsset => Boolean(asset))
-      .map((asset) => {
-        const clip: TimelineClip = {
-          id: `video-${asset.id}`,
-          assetId: asset.id,
-          label: `${asset.name}  ${asset.duration.toFixed(2)}`,
-          type: "video",
-          start,
-          duration: asset.duration,
-          color: "#22262b",
-          thumbnails: asset.thumbnails,
-          mediaUrl: asset.url,
+          clips: textElements.map((element, idx) => ({
+            id: element.id,
+            label: element.content || "Text",
+            type: "text",
+            start: element.start,
+            duration: element.duration,
+            color: "#075c61",
+            presentationWidth: getTextPresentationWidth(idx),
+          })),
         };
-        start += asset.duration;
-        return clip;
-      });
-    renderedTracks.push({ ...track, clips });
+      }
+    }
+
+    const clips: TimelineClip[] = track.clipIds
+      .map((id) => storeClips[id])
+      .filter(Boolean)
+      .map((c) => ({
+        id: c.id,
+        label: c.name,
+        type: c.type,
+        start: c.start,
+        duration: c.duration,
+        color: c.color || "#22262b",
+        thumbnails: c.thumbnails,
+        rawThumbnails: c.rawThumbnails || c.thumbnails,
+        baseDuration: c.baseDuration,
+        assetId: c.assetId,
+        mediaUrl: c.mediaUrl,
+        presentationWidth: c.presentationWidth,
+        locked: c.locked,
+        name: c.name,
+        speed: c.speed,
+        reverse: c.reverse,
+        isFrozen: c.isFrozen,
+        freezeTime: c.freezeTime,
+        inPoint: c.inPoint,
+        outPoint: c.outPoint,
+      }));
+
+    return {
+      id: track.id,
+      label: track.label,
+      type: track.type,
+      clips,
+    };
   });
 
-  return <div className="timeline-workspace"><LeftSideToolbar onAddText={onAddText} /><div className="timeline-main"><div className="ruler"><div className="ruler-spacer" />{rulerLabels.map((label) => <span key={label}>{label}</span>)}</div>{renderedTracks.map((track) => <TimelineTrack key={track.id} track={track} selectedClipId={track.type === "text" ? selectedTextId : selectedVideoId ? `video-${selectedVideoId}` : undefined} onSelectClip={(clip) => { if (clip.assetId) onSelectVideo(clip.assetId); else if (clip.type === "text") onSelectText(clip.id); }} onResizeClip={(clip, edge, time) => { if (clip.type === "text") onResizeText(clip.id, edge, time); }} timelineDuration={timelineDuration} />)}<div className="playhead"><span /></div></div></div>;
+  const activeSelectedId = selectedClipId || selectedTextId;
+  const playheadPct =
+    timelineDuration > 0
+      ? Math.min(100, Math.max(0, (currentTime / timelineDuration) * 100))
+      : 0;
+
+  return (
+    <div className="timeline-workspace">
+      <LeftSideToolbar onAddText={onAddText} />
+      <div
+        className="timeline-main"
+        ref={timelineMainRef}
+        onClick={handleTimelineClick}
+      >
+        <div className="ruler">
+          <div className="ruler-spacer" />
+          {rulerLabels.map((label) => (
+            <span key={label}>{label}</span>
+          ))}
+        </div>
+
+        {renderedTracks.map((track) => (
+          <TimelineTrack
+            key={track.id}
+            track={track}
+            selectedClipId={activeSelectedId || undefined}
+            onSelectClip={(clip) => {
+              selectClip(clip.id);
+              if (clip.assetId) {
+                onSelectVideo(clip.assetId);
+              } else if (clip.type === "text") {
+                onSelectText(clip.id);
+              }
+            }}
+            onResizeClip={(clip, edge, time) => {
+              if (clip.type === "text") {
+                onResizeText(clip.id, edge, time);
+              } else {
+                TrimProcessor.trimClip(clip.id, edge, time);
+              }
+            }}
+            timelineDuration={timelineDuration}
+          />
+        ))}
+
+        <div
+          className="playhead"
+          style={{
+            left: `calc(44px + (100% - 60px) * ${playheadPct / 100})`,
+          }}
+        >
+          <span />
+        </div>
+      </div>
+    </div>
+  );
 }

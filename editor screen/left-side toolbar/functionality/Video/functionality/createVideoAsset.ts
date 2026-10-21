@@ -48,13 +48,13 @@ function captureFrame(video: HTMLVideoElement): string {
   }
 
   const canvas = document.createElement("canvas");
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  canvas.width = 160;
+  canvas.height = 90;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("A canvas could not be created for the uploaded video.");
 
   context.drawImage(video, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.82);
+  return canvas.toDataURL("image/jpeg", 0.72);
 }
 
 export async function createVideoAsset(file: File): Promise<VideoAsset> {
@@ -75,7 +75,7 @@ export async function createVideoAsset(file: File): Promise<VideoAsset> {
       throw new Error("The uploaded video has no valid duration.");
     }
 
-    const frameCount = Math.min(12, Math.max(1, Math.ceil(video.duration)));
+    const frameCount = Math.min(24, Math.max(8, Math.ceil(video.duration * 2)));
     const thumbnails: string[] = [];
     for (let index = 0; index < frameCount; index += 1) {
       const time = frameCount === 1 ? 0 : (video.duration * index) / (frameCount - 1);

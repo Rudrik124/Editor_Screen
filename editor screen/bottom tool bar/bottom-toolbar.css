@@ -1,1 +1,72 @@
-.veytrix-bottom-toolbar{display:flex;align-items:center;gap:18px;height:28px;color:#a1a7af;white-space:nowrap}.veytrix-bottom-toolbar__group{display:flex;align-items:center;gap:18px}.veytrix-bottom-toolbar__separator{height:25px;border-left:1px solid #343940;margin:0 1px 0 3px}.veytrix-bottom-toolbar button{display:grid;place-items:center;width:22px;height:22px;color:inherit;border:0;background:transparent;padding:0}.veytrix-bottom-toolbar button:hover{color:#d9dde1}.veytrix-bottom-toolbar svg{width:21px;height:21px}
+.veytrix-bottom-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 34px;
+  color: #a1a7af;
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  padding: 0 4px;
+}
+
+.veytrix-bottom-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.veytrix-bottom-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.veytrix-bottom-toolbar__separator {
+  height: 20px;
+  border-left: 1px solid #343940;
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.veytrix-bottom-toolbar button {
+  display: grid;
+  place-items: center;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 4px;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  transition: transform 100ms cubic-bezier(0.16, 1, 0.3, 1), background-color 100ms ease;
+  flex-shrink: 0;
+}
+
+.veytrix-bottom-toolbar button:active {
+  transform: scale(0.92);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.veytrix-bottom-toolbar button:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .veytrix-bottom-toolbar button:hover:not(:disabled) {
+    color: #e8eaed;
+    background: rgba(255, 255, 255, 0.05);
+  }
+}
+
+.veytrix-bottom-toolbar svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
