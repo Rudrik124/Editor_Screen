@@ -34,6 +34,12 @@ export function handleTrimClip(
   let newDuration = clip.duration;
   let newIn = clip.inPoint ?? 0;
   let newOut = clip.outPoint;
+  const speed = clip.speed ?? 1;
+  const sourceDuration = clip.baseDuration ?? clip.outPoint;
+  const maxSourceOut =
+    sourceDuration !== undefined && Number.isFinite(sourceDuration)
+      ? sourceDuration
+      : undefined;
 
   const currentEnd = clip.start + clip.duration;
 
@@ -44,10 +50,17 @@ export function handleTrimClip(
     newStart = minStart;
     newDuration = currentEnd - minStart;
     newIn = Math.max(0, (clip.inPoint ?? 0) + delta);
+    newOut = newIn + newDuration * speed;
   } else {
     if (newTime <= clip.start + 0.1) return null; // Min 0.1s
-    newDuration = newTime - clip.start;
-    newOut = (clip.inPoint ?? 0) + newDuration;
+    const requestedDuration = newTime - clip.start;
+    const maxDuration =
+      maxSourceOut === undefined
+        ? requestedDuration
+        : Math.max(0, (maxSourceOut - newIn) / speed);
+    newDuration = Math.min(requestedDuration, maxDuration);
+    if (newDuration <= 0.1) return null;
+    newOut = newIn + newDuration * speed;
   }
 
   const updatedClip: ClipModel = {

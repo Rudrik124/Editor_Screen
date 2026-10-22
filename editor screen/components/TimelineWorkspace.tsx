@@ -42,12 +42,16 @@ export function TimelineWorkspace({
   const timelineMainRef = useRef<HTMLDivElement>(null);
 
   // Calculate timeline duration from active clips
-  const clipEnds = Object.values(storeClips).map((c) => c.start + c.duration);
-  const timelineDuration = Math.max(9.66, ...clipEnds, 0);
+  const videoClipEnds = Object.values(storeClips)
+    .filter((clip) => clip.type === "video")
+    .map((clip) => clip.start + clip.duration);
+  const hasVideo = videoClipEnds.length > 0;
+  const videoDuration = Math.max(...videoClipEnds, 0);
+  const timelineDuration = Math.max(9.66, ...videoClipEnds, 0);
 
   useEffect(() => {
-    setDuration(timelineDuration);
-  }, [timelineDuration, setDuration]);
+    setDuration(hasVideo ? timelineDuration : 0);
+  }, [hasVideo, timelineDuration, setDuration]);
 
   // Handle timeline scrubber / seek on click
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -85,12 +89,16 @@ export function TimelineWorkspace({
     const clips: TimelineClip[] = track.clipIds
       .map((id) => storeClips[id])
       .filter(Boolean)
+      .filter((clip) => hasVideo || (clip.type !== "music" && clip.type !== "audio"))
       .map((c) => ({
         id: c.id,
         label: c.name,
         type: c.type,
         start: c.start,
-        duration: c.duration,
+        duration:
+          hasVideo && (c.type === "music" || c.type === "audio")
+            ? videoDuration
+            : c.duration,
         color: c.color || "#22262b",
         thumbnails: c.thumbnails,
         rawThumbnails: c.rawThumbnails || c.thumbnails,

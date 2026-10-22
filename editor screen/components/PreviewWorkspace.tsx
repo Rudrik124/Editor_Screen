@@ -258,8 +258,14 @@ export function PreviewWorkspace({
 
       <div className="preview-status">
         <span>
-          {formatVideoTime(storeCurrentTime)}{" "}
-          <b>/ {formatVideoTime(storeDuration)}</b>
+          {activeVideoClip ? (
+            <>
+              {formatVideoTime(storeCurrentTime)}{" "}
+              <b>/ {formatVideoTime(storeDuration)}</b>
+            </>
+          ) : (
+            "--:-- / --:--"
+          )}
         </span>
         <span className="original">
           <span className="tiny-square" /> Original

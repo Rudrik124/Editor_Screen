@@ -220,12 +220,14 @@
 .trim-handle {
   position: absolute;
   top: 5px;
-  width: 3px;
-  height: 10px;
+  width: 6px;
+  height: 24px;
+  margin-top: -7px;
   background: #f4d45b;
   z-index: 3;
   cursor: ew-resize;
   opacity: 0.9;
+  border-radius: 2px;
 }
 
 .trim-handle.left {
@@ -234,6 +236,17 @@
 
 .trim-handle.right {
   right: -1px;
+}
+
+.video-resize-handle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.video-clip:hover .video-resize-handle,
+.video-clip.selected .video-resize-handle {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .playhead {
@@ -309,4 +322,3 @@
 .gap-delete-pill:active {
   transform: scale(0.92);
 }
-
