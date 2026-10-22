@@ -272,7 +272,12 @@ function getClipVisibleThumbnails(clip: TimelineClipData): string[] {
   const totalFrames = sourceThumbnails.length;
   const inPoint = clip.inPoint ?? 0;
   const outPoint = clip.outPoint ?? (inPoint + clip.duration);
-  const totalDuration = Math.max(clip.baseDuration ?? outPoint, outPoint, 0.01);
+  const totalDuration = Math.max(
+    clip.baseDuration ?? 0,
+    outPoint,
+    clip.duration,
+    0.01
+  );
 
   // 1. Frozen clip: repeat the frame at freezeTime across the whole clip
   if (clip.isFrozen) {

@@ -12,6 +12,7 @@ import { DeleteToolbarButton } from "../plugins/delete";
 export function BottomToolbar() {
   return (
     <nav className="veytrix-bottom-toolbar" aria-label="Editing tools">
+      {/* Group 1: Cut & Trim */}
       <span className="veytrix-bottom-toolbar__group">
         <SplitToolbarButton />
         <TrimToolbarButton />
@@ -19,6 +20,7 @@ export function BottomToolbar() {
 
       <span className="veytrix-bottom-toolbar__separator" aria-hidden="true" />
 
+      {/* Group 2: Time & Motion */}
       <span className="veytrix-bottom-toolbar__group">
         <SpeedToolbarButton />
         <ReverseToolbarButton />
@@ -27,6 +29,7 @@ export function BottomToolbar() {
 
       <span className="veytrix-bottom-toolbar__separator" aria-hidden="true" />
 
+      {/* Group 3: Clip Management */}
       <span className="veytrix-bottom-toolbar__group">
         <DuplicateToolbarButton />
         <RenameToolbarButton />
