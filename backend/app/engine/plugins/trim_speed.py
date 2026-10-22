@@ -74,6 +74,17 @@ class TrimSpeedPlugin(BasePipelinePlugin):
             ))
             current_label = freeze_label
 
+        # 5. Timeline start positioning offset (align PTS with clip.start)
+        offset_label = context.generate_label("v_pts_offset")
+        pts_expr = f"PTS-STARTPTS+({clip.start}/TB)" if clip.start > 0 else "PTS-STARTPTS"
+        context.add_node(FilterNode(
+            filter_name="setpts",
+            inputs=[current_label],
+            outputs=[offset_label],
+            args={"expr": pts_expr}
+        ))
+        current_label = offset_label
+
         return FilterStream(name=current_label, stream_type="video", duration=clip.duration)
 
     def transform_clip_audio(

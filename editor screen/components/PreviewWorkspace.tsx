@@ -96,11 +96,27 @@ export function PreviewWorkspace({
     let animId: number;
 
     const tick = (now: number) => {
-      const deltaSec = (now - lastTime) / 1000;
-      lastTime = now;
-
       const state = useEditorStore.getState();
-      const nextTime = state.currentTime + deltaSec;
+      const video = videoRef.current;
+
+      let nextTime: number;
+      if (
+        video &&
+        !video.paused &&
+        !video.seeking &&
+        activeVideoClip &&
+        !activeVideoClip.isFrozen &&
+        !activeVideoClip.reverse
+      ) {
+        const inPoint = activeVideoClip.inPoint ?? 0;
+        const speed = activeVideoClip.speed ?? 1.0;
+        const localTime = Math.max(0, (video.currentTime - inPoint) / speed);
+        nextTime = activeVideoClip.start + localTime;
+      } else {
+        const deltaSec = (now - lastTime) / 1000;
+        nextTime = state.currentTime + deltaSec;
+      }
+      lastTime = now;
 
       if (nextTime >= state.duration) {
         state.setIsPlaying(false);
@@ -114,7 +130,7 @@ export function PreviewWorkspace({
 
     animId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(animId);
-  }, [isPlaying]);
+  }, [isPlaying, activeVideoClip]);
 
   // 4. Video media synchronization
   const activeMediaUrl = activeVideoClip?.mediaUrl || media?.url || null;
@@ -152,7 +168,8 @@ export function PreviewWorkspace({
       if (video.paused) {
         void video.play().catch(() => {});
       }
-      if (Math.abs(video.currentTime - targetSourceTime) > 0.25) {
+      // Avoid hard seeking while playing unless crossing a large clip boundary
+      if (Math.abs(video.currentTime - targetSourceTime) > 1.2) {
         video.currentTime = targetSourceTime;
       }
     } else {

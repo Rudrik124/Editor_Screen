@@ -161,8 +161,6 @@ export function TimelineWorkspace({
             onResizeClip={(clip, edge, time) => {
               if (clip.type === "text") {
                 onResizeText(clip.id, edge, time);
-              } else {
-                TrimProcessor.trimClip(clip.id, edge, time);
               }
             }}
             timelineDuration={timelineDuration}

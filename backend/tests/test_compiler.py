@@ -58,3 +58,40 @@ def test_compiler_generates_valid_ffmpeg_command(tmp_path):
     assert "1280x720" in fc_str
     assert "setpts" in fc_str  # Speed factor
     assert "overlay=" in fc_str
+
+
+def test_compiler_timeline_start_pts_offset(tmp_path):
+    compiler = TimelineCompiler()
+    dummy_video = tmp_path / "dummy.mp4"
+    dummy_video.write_text("fake media content")
+
+    request = TimelineExportRequest(
+        projectId="proj-pts-test",
+        tracks=[TrackSchema(id="video", label="Video", type="video", clipIds=["c1"])],
+        clips=[
+            ClipSchema(
+                id="c1",
+                trackId="video",
+                name="Delayed Clip",
+                type="video",
+                start=3.5,
+                duration=4.0,
+                inPoint=0.0,
+                outPoint=4.0,
+                mediaUrl=str(dummy_video)
+            )
+        ],
+        fps=30,
+        width=1280,
+        height=720,
+        quality="standard"
+    )
+
+    output_file = str(tmp_path / "output.mp4")
+    cmd, duration = compiler.compile(request, output_file)
+    fc_str = cmd[cmd.index("-filter_complex") + 1]
+
+    # Must contain timeline start PTS offset so frames are not dropped early
+    assert "PTS-STARTPTS+(3.5/TB)" in fc_str
+    assert "between(t,3.5,7.5)" in fc_str
+

@@ -49,7 +49,7 @@ export function handleTrimClip(
     const delta = minStart - clip.start;
     newStart = minStart;
     newDuration = currentEnd - minStart;
-    newIn = Math.max(0, (clip.inPoint ?? 0) + delta);
+    newIn = Math.max(0, (clip.inPoint ?? 0) + delta * speed);
     newOut = newIn + newDuration * speed;
   } else {
     if (newTime <= clip.start + 0.1) return null; // Min 0.1s

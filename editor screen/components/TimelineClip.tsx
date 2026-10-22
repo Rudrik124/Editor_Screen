@@ -44,11 +44,27 @@ export function TimelineClip({
     const initial = edge === "left" ? clip.start : clip.start + clip.duration;
     const pixelsPerSecond = track.getBoundingClientRect().width / timelineDuration;
 
+    const clipButton = event.currentTarget.closest(".timeline-clip") as HTMLElement | null;
     let lastCalculatedTime = initial;
 
     const move = (moveEvent: PointerEvent) => {
       const deltaSec = (moveEvent.clientX - startX) / pixelsPerSecond;
       lastCalculatedTime = Math.max(0, initial + deltaSec);
+
+      if (clipButton) {
+        if (edge === "left") {
+          const currentEnd = clip.start + clip.duration;
+          const clampedStart = Math.min(currentEnd - 0.1, Math.max(0, lastCalculatedTime));
+          const clampedDur = currentEnd - clampedStart;
+          clipButton.style.left = `${(clampedStart / timelineDuration) * 100}%`;
+          clipButton.style.width = `${(clampedDur / timelineDuration) * 100}%`;
+        } else {
+          const clampedEnd = Math.max(clip.start + 0.1, lastCalculatedTime);
+          const clampedDur = clampedEnd - clip.start;
+          clipButton.style.width = `${(clampedDur / timelineDuration) * 100}%`;
+        }
+      }
+
       if (onResize) {
         onResize(edge, lastCalculatedTime);
       }
