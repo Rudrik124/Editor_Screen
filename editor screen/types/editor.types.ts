@@ -61,6 +61,53 @@ export interface VideoAsset {
   thumbnails: string[];
 }
 
+export type AspectRatio = "16:9" | "9:16" | "1:1" | "4:5" | "21:9";
+
+export type TransitionType =
+  | "cross_dissolve"
+  | "fade_black"
+  | "fade_white"
+  | "dip_to_color"
+  | "instant_cut"
+  | "camera_shake"
+  | "crash_zoom"
+  | "whip_pan_left"
+  | "zoom_in"
+  | "zoom_out"
+  | "hyper_zoom"
+  | "pulse_zoom"
+  | "slide_left"
+  | "slide_right"
+  | "push_up"
+  | "perspective_push"
+  | "spin_left"
+  | "spin_right"
+  | "motion_blur"
+  | "gaussian_blur";
+
+export interface TransitionData {
+  type: TransitionType;
+  duration: number; // in seconds
+  color?: string; // hex or rgb for dip_to_color
+  easing?: "linear" | "easeIn" | "easeOut" | "easeInOut";
+}
+
+export type KeyframeProperty =
+  | "opacity"
+  | "scale"
+  | "positionX"
+  | "positionY"
+  | "rotation"
+  | "volume";
+
+export interface KeyframeData {
+  id: string;
+  timeOffset: number; // in seconds from clip start
+  property: KeyframeProperty;
+  value: number;
+  interpolation?: "linear" | "easeIn" | "easeOut" | "easeInOut";
+}
+
 export interface Track {
   id: string;
   label: string;
@@ -92,6 +139,16 @@ export interface ClipModel {
   reverse?: boolean;
   isFrozen?: boolean;
   freezeTime?: number;
+  // Phase 3 Layering, Transforms, Transitions, Keyframes
+  opacity?: number;
+  scale?: number;
+  positionX?: number;
+  positionY?: number;
+  rotation?: number;
+  layerIndex?: number;
+  transition?: TransitionData;
+  keyframes?: KeyframeData[];
+  metadata?: Record<string, unknown>;
 }
 
 export interface TrackModel {

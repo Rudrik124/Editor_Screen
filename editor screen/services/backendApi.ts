@@ -92,6 +92,19 @@ export async function submitTimelineRender(
       freezeTime: c.freezeTime,
       volume: c.volume !== undefined ? c.volume : 1.0,
       color: c.color,
+      // Phase 3: Transition, Keyframes, Layering Transforms
+      transition: c.transition
+        ? {
+            type: c.transition.type,
+            duration: c.transition.duration,
+          }
+        : undefined,
+      keyframes: c.keyframes || [],
+      opacity: c.opacity !== undefined ? c.opacity : 1.0,
+      scale: c.scale !== undefined ? c.scale : 1.0,
+      positionX: c.positionX ?? 0.0,
+      positionY: c.positionY ?? 0.0,
+      rotation: c.rotation ?? 0.0,
     })),
     fps: settings.fps,
     width: settings.resolution.width,

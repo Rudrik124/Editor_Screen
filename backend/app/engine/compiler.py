@@ -8,6 +8,7 @@ from app.engine.plugins.filters_color import ColorFilterPlugin
 from app.engine.plugins.effects import EffectsPlugin
 from app.engine.plugins.audio import AudioPlugin
 from app.engine.plugins.text_subtitles import TextSubtitlePlugin
+from app.engine.plugins.transitions import TransitionPlugin
 from app.schemas.timeline import TimelineExportRequest, ClipSchema, TrackSchema
 
 class TimelineCompiler:
@@ -22,6 +23,7 @@ class TimelineCompiler:
         self.effects_plugin = EffectsPlugin()
         self.audio_plugin = AudioPlugin()
         self.text_plugin = TextSubtitlePlugin()
+        self.transition_plugin = TransitionPlugin()
 
     def compile(
         self,
@@ -136,6 +138,37 @@ class TimelineCompiler:
                 stream = self.color_plugin.transform_clip_video(context, clip, stream)
                 stream = self.effects_plugin.transform_clip_video(context, clip, stream)
                 stream = self.text_plugin.transform_clip_video(context, clip, stream)
+
+                # Phase 3 Transform: Scale (PIP)
+                if clip.scale and abs(clip.scale - 1.0) > 0.01:
+                    scaled_label = context.generate_label("v_scale")
+                    target_w = max(2, int(round(request.width * clip.scale / 2)) * 2)
+                    context.add_node(FilterNode(
+                        filter_name="scale",
+                        inputs=[stream.name],
+                        outputs=[scaled_label],
+                        args={"w": str(target_w), "h": "-1"}
+                    ))
+                    stream = FilterStream(name=scaled_label, stream_type="video", duration=stream.duration)
+
+                # Phase 3 Transform: Opacity
+                if clip.opacity is not None and clip.opacity < 0.999:
+                    rgba_label = context.generate_label("v_rgba")
+                    context.add_node(FilterNode(
+                        filter_name="format",
+                        inputs=[stream.name],
+                        outputs=[rgba_label],
+                        args={"pix_fmts": "yuva420p"}
+                    ))
+                    op_label = context.generate_label("v_opacity")
+                    context.add_node(FilterNode(
+                        filter_name="colorchannelmixer",
+                        inputs=[rgba_label],
+                        outputs=[op_label],
+                        args={"aa": f"{clip.opacity:.2f}"}
+                    ))
+                    stream = FilterStream(name=op_label, stream_type="video", duration=stream.duration)
+
                 video_overlay_streams.append((clip, stream))
 
             # Process Audio Stream (exclude frozen clips as freeze frames have no audio)
@@ -152,23 +185,58 @@ class TimelineCompiler:
                 a_stream = self.audio_plugin.transform_clip_audio(context, clip, a_stream)
                 audio_streams.append(a_stream)
 
-        # 3. Layer Video Overlays onto Background Canvas
-        current_canvas = canvas_label
+        # 3. Layer Video Overlays onto Background Canvas (Track-aware with Transitions)
+        streams_by_track: Dict[str, List[Tuple[ClipSchema, FilterStream]]] = {}
         for clip, v_stream in video_overlay_streams:
-            next_canvas = context.generate_label("canvas")
-            enable_expr = f"between(t,{clip.start},{clip.start + clip.duration})"
-            context.add_node(FilterNode(
-                filter_name="overlay",
-                inputs=[current_canvas, v_stream.name],
-                outputs=[next_canvas],
-                args={
-                    "enable": f"'{enable_expr}'",
-                    "x": str(int(clip.positionX)),
-                    "y": str(int(clip.positionY)),
-                    "eof_action": "pass"
-                }
-            ))
-            current_canvas = next_canvas
+            streams_by_track.setdefault(clip.trackId, []).append((clip, v_stream))
+
+        current_canvas = canvas_label
+        for track in request.tracks:
+            track_items = streams_by_track.get(track.id, [])
+            if not track_items:
+                continue
+
+            # Check if this track contains clips with transitions
+            has_transitions = any(c.transition for c, _ in track_items)
+            if has_transitions and len(track_items) > 1:
+                composed_track_stream = self.transition_plugin.compose_track_video_clips(
+                    context, track_items
+                )
+                if composed_track_stream:
+                    next_canvas = context.generate_label("canvas")
+                    t_start = track_items[0][0].start
+                    t_end = t_start + composed_track_stream.duration
+                    enable_expr = f"between(t,{t_start},{t_end})"
+                    context.add_node(FilterNode(
+                        filter_name="overlay",
+                        inputs=[current_canvas, composed_track_stream.name],
+                        outputs=[next_canvas],
+                        args={
+                            "enable": f"'{enable_expr}'",
+                            "x": "0",
+                            "y": "0",
+                            "eof_action": "pass"
+                        }
+                    ))
+                    current_canvas = next_canvas
+                    continue
+
+            # Default layer-by-layer overlay for separate clips / overlays
+            for clip, v_stream in track_items:
+                next_canvas = context.generate_label("canvas")
+                enable_expr = f"between(t,{clip.start},{clip.start + clip.duration})"
+                context.add_node(FilterNode(
+                    filter_name="overlay",
+                    inputs=[current_canvas, v_stream.name],
+                    outputs=[next_canvas],
+                    args={
+                        "enable": f"'{enable_expr}'",
+                        "x": str(int(clip.positionX)),
+                        "y": str(int(clip.positionY)),
+                        "eof_action": "pass"
+                    }
+                ))
+                current_canvas = next_canvas
 
         master_video_stream = current_canvas
 

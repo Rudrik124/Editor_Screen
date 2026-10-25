@@ -1,12 +1,9 @@
 import { create } from "zustand";
-import { ClipModel, TrackModel } from "../types/editor.types";
+import { AspectRatio, ClipModel, TrackModel } from "../types/editor.types";
 import { EditorCommand } from "../types/command.types";
 import { executeCommandMutation } from "./command.executor";
 
-// shortcut: Supabase sync deferred to Phase 3
-// shortcut: WebGL canvas renderer deferred to Phase 3
-// shortcut: Audio waveforms deferred to Phase 2
-// shortcut: AI tool calling bridge deferred to Phase 4
+// Phase 3: Layering, Transitions, Keyframes, Cover, Ratio, Replace enabled
 
 export interface EditorStoreState {
   tracks: TrackModel[];
@@ -16,6 +13,8 @@ export interface EditorStoreState {
   currentTime: number;
   duration: number;
   isPlaying: boolean;
+  aspectRatio: AspectRatio;
+  coverUrl: string | null;
   history: EditorCommand[];
   future: EditorCommand[];
   historyLimit: number;
@@ -29,6 +28,8 @@ export interface EditorStoreState {
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
+  setAspectRatio: (aspectRatio: AspectRatio) => void;
+  setCoverUrl: (coverUrl: string | null) => void;
   setTracksAndClips: (
     tracks: TrackModel[],
     clips: Record<string, ClipModel>
@@ -72,9 +73,14 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
   currentTime: 0,
   duration: 9.66,
   isPlaying: false,
+  aspectRatio: "16:9",
+  coverUrl: null,
   history: [],
   future: [],
   historyLimit: 50,
+
+  setAspectRatio: (aspectRatio: AspectRatio) => set({ aspectRatio }),
+  setCoverUrl: (coverUrl: string | null) => set({ coverUrl }),
 
   dispatch: (command: EditorCommand): boolean => {
     const state = get();

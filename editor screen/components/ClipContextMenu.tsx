@@ -8,7 +8,16 @@ import { RenameModal } from "../plugins/rename";
 import { TrimProcessor } from "../plugins/trim";
 import { ReverseProcessor } from "../plugins/reverse";
 import { FreezeProcessor } from "../plugins/freeze";
+import { TransitionModal } from "../plugins/transition";
+import { ReplaceModal } from "../plugins/replace";
+import { OverlapProcessor } from "../plugins/overlap";
+import { CoverProcessor } from "../plugins/cover";
 import { useEditorStore } from "../store/editor.store";
+import {
+  menuItemStyle,
+  kbdStyle,
+  contextMenuContainerStyle,
+} from "./contextMenu.styles";
 
 interface ClipContextMenuProps {
   clip: ClipModel;
@@ -20,17 +29,19 @@ interface ClipContextMenuProps {
 export function ClipContextMenu({ clip, x, y, onClose }: ClipContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [transOpen, setTransOpen] = useState(false);
+  const [replaceOpen, setReplaceOpen] = useState(false);
   const currentTime = useEditorStore((state) => state.currentTime);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        if (!renameOpen) onClose();
+        if (!renameOpen && !transOpen && !replaceOpen) onClose();
       }
     };
     window.addEventListener("mousedown", handleClickOutside);
     return () => window.removeEventListener("mousedown", handleClickOutside);
-  }, [onClose, renameOpen]);
+  }, [onClose, renameOpen, transOpen, replaceOpen]);
 
   const canTrimLeft =
     !clip.locked &&
@@ -49,24 +60,7 @@ export function ClipContextMenu({ clip, x, y, onClose }: ClipContextMenuProps) {
 
   return (
     <>
-      <div
-        ref={menuRef}
-        className="clip-context-menu"
-        style={{
-          position: "fixed",
-          top: y,
-          left: x,
-          background: "#22262d",
-          border: "1px solid #3c434d",
-          borderRadius: "6px",
-          padding: "4px 0",
-          zIndex: 9999,
-          boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
-          minWidth: "170px",
-          fontSize: "12px",
-          color: "#dfe3e7",
-        }}
-      >
+      <div ref={menuRef} className="clip-context-menu" style={contextMenuContainerStyle(x, y)}>
         <button
           type="button"
           disabled={clip.locked}
@@ -104,102 +98,82 @@ export function ClipContextMenu({ clip, x, y, onClose }: ClipContextMenuProps) {
           <span>Trim End to Playhead</span>
         </button>
 
-        <button
-          type="button"
-          disabled={clip.locked}
-          onClick={() => {
-            ReverseProcessor.toggleReverseClip(clip.id);
-            onClose();
-          }}
-          style={menuItemStyle(clip.locked)}
-        >
-          <span>{clip.reverse ? "Reverse: Off" : "Reverse Video"}</span>
-        </button>
+        {clip.type === "video" && (
+          <>
+            <button
+              type="button"
+              disabled={clip.locked}
+              onClick={() => {
+                ReverseProcessor.toggleReverseClip(clip.id);
+                onClose();
+              }}
+              style={menuItemStyle(clip.locked)}
+            >
+              <span>{clip.reverse ? "Reverse: Off" : "Reverse Video"}</span>
+            </button>
 
-        <button
-          type="button"
-          disabled={!canFreeze}
-          onClick={() => {
-            FreezeProcessor.freezeClipAt(clip.id, currentTime, 2.0);
-            onClose();
-          }}
-          style={menuItemStyle(!canFreeze)}
-        >
-          <span>Add Freeze Frame (2s)</span>
-        </button>
+            <button
+              type="button"
+              disabled={!canFreeze}
+              onClick={() => {
+                FreezeProcessor.freezeClipAt(clip.id, currentTime, 2.0);
+                onClose();
+              }}
+              style={menuItemStyle(!canFreeze)}
+            >
+              <span>Add Freeze Frame (2s)</span>
+            </button>
+
+            <div style={{ height: "1px", background: "#333a44", margin: "4px 0" }} />
+
+            {/* Phase 3 Transition */}
+            <button
+              type="button"
+              disabled={clip.locked}
+              onClick={() => setTransOpen(true)}
+              style={{ ...menuItemStyle(clip.locked), color: "#38bdf8" }}
+            >
+              <span>{clip.transition ? "Edit Transition (⧖)" : "Add Transition (⋈)"}</span>
+            </button>
+
+            {/* Phase 3 Overlap / PIP */}
+            <button
+              type="button"
+              disabled={clip.locked}
+              onClick={() => {
+                OverlapProcessor.moveToOverlayTrack(clip.id);
+                onClose();
+              }}
+              style={menuItemStyle(clip.locked)}
+            >
+              <span>Move to Overlay (PIP)</span>
+            </button>
+
+            {/* Phase 3 Replace Media */}
+            <button
+              type="button"
+              disabled={clip.locked}
+              onClick={() => setReplaceOpen(true)}
+              style={menuItemStyle(clip.locked)}
+            >
+              <span>Replace Media...</span>
+            </button>
+
+            {/* Phase 3 Set as Cover */}
+            <button
+              type="button"
+              onClick={() => {
+                CoverProcessor.setCoverUrl(clip.mediaUrl || "", clip.id);
+                onClose();
+              }}
+              style={menuItemStyle(false)}
+            >
+              <span>Set as Project Cover</span>
+            </button>
+          </>
+        )}
 
         <div style={{ height: "1px", background: "#333a44", margin: "4px 0" }} />
-
-        {(() => {
-          const state = useEditorStore.getState();
-          const track = state.tracks.find(
-            (t) => t.id === clip.trackId || t.clipIds.includes(clip.id)
-          );
-          const clipIndex = track ? track.clipIds.indexOf(clip.id) : -1;
-          const nextClipId =
-            track && clipIndex >= 0 && clipIndex < track.clipIds.length - 1
-              ? track.clipIds[clipIndex + 1]
-              : null;
-          const nextClip = nextClipId ? state.clips[nextClipId] : null;
-
-          const hasGapAfter =
-            nextClip && nextClip.start - (clip.start + clip.duration) > 0.08;
-
-          return (
-            <>
-              {hasGapAfter && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (track && nextClip) {
-                      const gapStart = clip.start + clip.duration;
-                      const gapDuration = nextClip.start - gapStart;
-                      useEditorStore.getState().dispatch({
-                        id: `close-gap-${Date.now()}`,
-                        type: "CLOSE_GAP",
-                        payload: {
-                          trackId: track.id,
-                          gapStart,
-                          gapDuration,
-                        },
-                        timestamp: Date.now(),
-                      });
-                    }
-                    onClose();
-                  }}
-                  style={{ ...menuItemStyle(false), color: "#20b8a1" }}
-                >
-                  <span>Close Blank Space</span>
-                </button>
-              )}
-
-              {nextClip && (
-                <button
-                  type="button"
-                  disabled={clip.locked || nextClip.locked}
-                  onClick={() => {
-                    useEditorStore.getState().dispatch({
-                      id: `merge-${Date.now()}`,
-                      type: "MERGE_CLIPS",
-                      payload: {
-                        firstClipId: clip.id,
-                        secondClipId: nextClip.id,
-                      },
-                      timestamp: Date.now(),
-                    });
-                    onClose();
-                  }}
-                  style={{
-                    ...menuItemStyle(clip.locked || nextClip.locked),
-                    color: clip.locked || nextClip.locked ? undefined : "#4ca9bc",
-                  }}
-                >
-                  <span>Combine with Next Clip</span>
-                </button>
-              )}
-            </>
-          );
-        })()}
 
         <button
           type="button"
@@ -215,9 +189,7 @@ export function ClipContextMenu({ clip, x, y, onClose }: ClipContextMenuProps) {
         <button
           type="button"
           disabled={clip.locked}
-          onClick={() => {
-            setRenameOpen(true);
-          }}
+          onClick={() => setRenameOpen(true)}
           style={menuItemStyle(clip.locked)}
         >
           <span>Rename...</span>
@@ -262,32 +234,25 @@ export function ClipContextMenu({ clip, x, y, onClose }: ClipContextMenuProps) {
           onClose();
         }}
       />
+
+      <TransitionModal
+        clipId={clip.id}
+        isOpen={transOpen}
+        currentTransition={clip.transition}
+        onClose={() => {
+          setTransOpen(false);
+          onClose();
+        }}
+      />
+
+      <ReplaceModal
+        clipId={clip.id}
+        isOpen={replaceOpen}
+        onClose={() => {
+          setReplaceOpen(false);
+          onClose();
+        }}
+      />
     </>
   );
 }
-
-function menuItemStyle(disabled = false): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: "6px 14px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    background: "none",
-    border: "none",
-    textAlign: "left",
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.45 : 1,
-    color: "inherit",
-    fontSize: "12px",
-  };
-}
-
-const kbdStyle: React.CSSProperties = {
-  fontSize: "10px",
-  background: "#181b20",
-  padding: "2px 5px",
-  borderRadius: "3px",
-  border: "1px solid #363d47",
-  color: "#8e96a0",
-};

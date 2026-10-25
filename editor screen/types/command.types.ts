@@ -14,7 +14,17 @@ export type CommandType =
   | "RESTORE_FREEZE_CLIPS"
   | "CLOSE_GAP"
   | "MOVE_CLIP"
-  | "BATCH_COMMAND";
+  | "BATCH_COMMAND"
+  | "ADD_TRANSITION"
+  | "REMOVE_TRANSITION"
+  | "SET_OVERLAP"
+  | "SET_CLIP_TRANSFORM"
+  | "ADD_KEYFRAME"
+  | "REMOVE_KEYFRAME"
+  | "UPDATE_KEYFRAME"
+  | "SET_COVER"
+  | "SET_RATIO"
+  | "REPLACE_CLIP";
 
 export interface EditorCommand {
   id: string;

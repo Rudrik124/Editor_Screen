@@ -20,6 +20,17 @@ import {
   handleRestoreFreezeClips,
 } from "./phase2.mutations";
 import { handleCloseGap, handleMoveClip } from "./gap.mutations";
+import {
+  handleAddTransition,
+  handleRemoveTransition,
+  handleSetOverlap,
+  handleSetClipTransform,
+  handleAddKeyframe,
+  handleRemoveKeyframe,
+  handleSetRatio,
+  handleSetCover,
+  handleReplaceClip,
+} from "./phase3.mutations";
 import { sanitizeClipName } from "./sanitize";
 
 export { sanitizeClipName };
@@ -62,6 +73,24 @@ export function executeCommandMutation(
       return handleCloseGap(state, command);
     case "MOVE_CLIP":
       return handleMoveClip(state, command);
+    case "ADD_TRANSITION":
+      return handleAddTransition(state, command);
+    case "REMOVE_TRANSITION":
+      return handleRemoveTransition(state, command);
+    case "SET_OVERLAP":
+      return handleSetOverlap(state, command);
+    case "SET_CLIP_TRANSFORM":
+      return handleSetClipTransform(state, command);
+    case "ADD_KEYFRAME":
+      return handleAddKeyframe(state, command);
+    case "REMOVE_KEYFRAME":
+      return handleRemoveKeyframe(state, command);
+    case "SET_RATIO":
+      return handleSetRatio(state, command);
+    case "SET_COVER":
+      return handleSetCover(state, command);
+    case "REPLACE_CLIP":
+      return handleReplaceClip(state, command);
     default:
       console.warn(`Unknown command type: ${type}`);
       return null;

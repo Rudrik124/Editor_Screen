@@ -3,13 +3,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatVideoTime } from "./utils/formatVideoTime";
 import { TextElement } from "../left-side toolbar/functionality/text/functionality/text.types";
 import { useEditorStore } from "../store/editor.store";
+import { WebGLRenderer } from "../renderer/webgl.renderer";
+import { evaluateClipTransforms } from "../renderer/keyframe.interpolator";
+import { getTransitionDefinition } from "../plugins/transition/transition.catalog";
+import { RatioProcessor, RatioSelector } from "../plugins/ratio";
+import { CoverModal } from "../plugins/cover";
 
 interface PreviewWorkspaceProps {
   media: { url: string; type: "video" | "image"; name: string } | null;
-  onPlaybackControllerReady: (controller: {
-    isPlaying: boolean;
-    toggle: () => void;
-  }) => void;
+  onPlaybackControllerReady: (controller: { isPlaying: boolean; toggle: () => void }) => void;
   textElements: TextElement[];
   onCurrentTimeChange: (time: number) => void;
 }
@@ -19,8 +21,13 @@ export function PreviewWorkspace({
   onPlaybackControllerReady,
   textElements,
 }: PreviewWorkspaceProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const imageRef = useRef<HTMLImageElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const videoPrimaryRef = useRef<HTMLVideoElement>(null);
+  const videoSecondaryRef = useRef<HTMLVideoElement>(null);
+  const videoOverlayRef = useRef<HTMLVideoElement>(null);
+  const rendererRef = useRef<WebGLRenderer | null>(null);
+
+  const [coverModalOpen, setCoverModalOpen] = useState(false);
 
   const storeTracks = useEditorStore((state) => state.tracks);
   const storeClips = useEditorStore((state) => state.clips);
@@ -28,67 +35,84 @@ export function PreviewWorkspace({
   const storeDuration = useEditorStore((state) => state.duration);
   const isPlaying = useEditorStore((state) => state.isPlaying);
   const setIsPlaying = useEditorStore((state) => state.setIsPlaying);
-  const [videoLoaded, setVideoLoaded] = useState(false);
+  const aspectRatio = useEditorStore((state) => state.aspectRatio);
 
-  // 1. Resolve active clip on the video track under playhead
-  const activeVideoClip = useMemo(() => {
+  // Initialize WebGL Renderer
+  useEffect(() => {
+    if (canvasRef.current && !rendererRef.current) {
+      rendererRef.current = new WebGLRenderer(canvasRef.current);
+    }
+    return () => {
+      rendererRef.current?.destroy();
+      rendererRef.current = null;
+    };
+  }, []);
+
+  // Update canvas resolution when aspect ratio changes
+  useEffect(() => {
+    const dims = RatioProcessor.getDimensions(aspectRatio);
+    rendererRef.current?.resize(dims.width, dims.height);
+  }, [aspectRatio]);
+
+  // 1. Resolve active and transition clips on video track
+  const { activeVideoClip, nextVideoClip, transitionInfo } = useMemo(() => {
     const videoTrack = storeTracks.find((t) => t.id === "video");
     const videoClips = videoTrack
       ? videoTrack.clipIds.map((id) => storeClips[id]).filter(Boolean)
       : Object.values(storeClips).filter((c) => c.type === "video");
 
-    if (videoClips.length === 0) return null;
-
-    const current = videoClips.find(
-      (c) =>
-        storeCurrentTime >= c.start &&
-        storeCurrentTime < c.start + c.duration
-    );
-    if (current) return current;
-
-    const last = videoClips.find(
-      (c) => Math.abs(storeCurrentTime - (c.start + c.duration)) < 0.05
-    );
-    if (last) return last;
-
-    if (storeCurrentTime < videoClips[0].start) {
-      return videoClips[0];
+    if (videoClips.length === 0) {
+      return { activeVideoClip: null, nextVideoClip: null, transitionInfo: null };
     }
-    return videoClips[videoClips.length - 1];
+
+    const currentIndex = videoClips.findIndex(
+      (c) => storeCurrentTime >= c.start && storeCurrentTime < c.start + c.duration
+    );
+
+    if (currentIndex === -1) {
+      return { activeVideoClip: videoClips[0], nextVideoClip: null, transitionInfo: null };
+    }
+
+    const currentClip = videoClips[currentIndex];
+    const nextClip = currentIndex < videoClips.length - 1 ? videoClips[currentIndex + 1] : null;
+
+    let transInfo = null;
+    if (currentClip.transition && nextClip) {
+      const transDur = currentClip.transition.duration || 0.5;
+      const transStart = currentClip.start + currentClip.duration - transDur;
+      if (storeCurrentTime >= transStart && storeCurrentTime <= currentClip.start + currentClip.duration) {
+        const progress = Math.max(0, Math.min(1, (storeCurrentTime - transStart) / transDur));
+        const def = getTransitionDefinition(currentClip.transition.type);
+        transInfo = {
+          progress,
+          typeIndex: def.index,
+          color: currentClip.transition.color || "#000000",
+        };
+      }
+    }
+
+    return { activeVideoClip: currentClip, nextVideoClip: nextClip, transitionInfo: transInfo };
   }, [storeTracks, storeClips, storeCurrentTime]);
 
-  // 2. Compute exact source media time (inPoint, speed, freeze, reverse)
-  const targetSourceTime = useMemo(() => {
-    if (!activeVideoClip) return storeCurrentTime;
-
-    const localTime = Math.max(
-      0,
-      Math.min(
-        activeVideoClip.duration,
-        storeCurrentTime - activeVideoClip.start
-      )
-    );
-
-    if (activeVideoClip.isFrozen) {
-      return activeVideoClip.freezeTime ?? activeVideoClip.inPoint ?? 0;
+  // 2. Resolve active overlay/PIP clips
+  const activeOverlayClip = useMemo(() => {
+    const overlayTracks = storeTracks.filter((t) => t.id.includes("overlay"));
+    for (const track of overlayTracks) {
+      const clips = track.clipIds.map((id) => storeClips[id]).filter(Boolean);
+      const hit = clips.find(
+        (c) => storeCurrentTime >= c.start && storeCurrentTime < c.start + c.duration
+      );
+      if (hit) return hit;
     }
+    return null;
+  }, [storeTracks, storeClips, storeCurrentTime]);
 
-    const inPoint = activeVideoClip.inPoint ?? 0;
-    const speed = activeVideoClip.speed ?? 1.0;
-
-    if (activeVideoClip.reverse) {
-      const outPoint =
-        activeVideoClip.outPoint ?? (inPoint + activeVideoClip.duration);
-      return Math.max(inPoint, outPoint - localTime * speed);
-    }
-
-    return inPoint + localTime * speed;
-  }, [activeVideoClip, storeCurrentTime]);
-
-  // 3. Master timeline playback loop (CapCut/VN architecture)
+  // 3. Master timeline playback loop (rAF)
   useEffect(() => {
     if (!isPlaying) {
-      videoRef.current?.pause();
+      videoPrimaryRef.current?.pause();
+      videoSecondaryRef.current?.pause();
+      videoOverlayRef.current?.pause();
       return;
     }
 
@@ -97,26 +121,9 @@ export function PreviewWorkspace({
 
     const tick = (now: number) => {
       const state = useEditorStore.getState();
-      const video = videoRef.current;
-
-      let nextTime: number;
-      if (
-        video &&
-        !video.paused &&
-        !video.seeking &&
-        activeVideoClip &&
-        !activeVideoClip.isFrozen &&
-        !activeVideoClip.reverse
-      ) {
-        const inPoint = activeVideoClip.inPoint ?? 0;
-        const speed = activeVideoClip.speed ?? 1.0;
-        const localTime = Math.max(0, (video.currentTime - inPoint) / speed);
-        nextTime = activeVideoClip.start + localTime;
-      } else {
-        const deltaSec = (now - lastTime) / 1000;
-        nextTime = state.currentTime + deltaSec;
-      }
+      const deltaSec = (now - lastTime) / 1000;
       lastTime = now;
+      const nextTime = state.currentTime + deltaSec;
 
       if (nextTime >= state.duration) {
         state.setIsPlaying(false);
@@ -130,63 +137,89 @@ export function PreviewWorkspace({
 
     animId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(animId);
-  }, [isPlaying, activeVideoClip]);
+  }, [isPlaying]);
 
-  // 4. Video media synchronization
-  const activeMediaUrl = activeVideoClip?.mediaUrl || media?.url || null;
+  // 4. Sync media elements & render WebGL frame
+  const computeSourceTime = (clip: typeof activeVideoClip, time: number) => {
+    if (!clip) return time;
+    const local = Math.max(0, Math.min(clip.duration, time - clip.start));
+    if (clip.isFrozen) return clip.freezeTime ?? clip.inPoint ?? 0;
+    const inPoint = clip.inPoint ?? 0;
+    const speed = clip.speed ?? 1.0;
+    if (clip.reverse) {
+      const outPoint = clip.outPoint ?? inPoint + clip.duration;
+      return Math.max(inPoint, outPoint - local * speed);
+    }
+    return inPoint + local * speed;
+  };
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !activeMediaUrl) return;
+    const renderer = rendererRef.current;
+    if (!renderer) return;
 
-    if (video.src !== activeMediaUrl && !video.src.endsWith(activeMediaUrl)) {
-      video.src = activeMediaUrl;
+    // Clear background
+    renderer.clear(0.04, 0.05, 0.07, 1.0);
+
+    const v1 = videoPrimaryRef.current;
+    const v2 = videoSecondaryRef.current;
+    const vo = videoOverlayRef.current;
+
+    // Sync v1 source
+    if (v1 && activeVideoClip?.mediaUrl) {
+      if (v1.src !== activeVideoClip.mediaUrl && !v1.src.endsWith(activeVideoClip.mediaUrl)) {
+        v1.src = activeVideoClip.mediaUrl;
+      }
+      const t1 = computeSourceTime(activeVideoClip, storeCurrentTime);
+      if (Math.abs(v1.currentTime - t1) > 0.06) v1.currentTime = t1;
+      if (isPlaying && v1.paused) void v1.play().catch(() => {});
     }
 
-    if (activeVideoClip?.isFrozen) {
-      if (!video.paused) video.pause();
-      if (Math.abs(video.currentTime - targetSourceTime) > 0.05) {
-        video.currentTime = targetSourceTime;
+    // Sync v2 source for transition
+    if (v2 && transitionInfo && nextVideoClip?.mediaUrl) {
+      if (v2.src !== nextVideoClip.mediaUrl && !v2.src.endsWith(nextVideoClip.mediaUrl)) {
+        v2.src = nextVideoClip.mediaUrl;
       }
-      return;
+      const t2 = computeSourceTime(nextVideoClip, storeCurrentTime);
+      if (Math.abs(v2.currentTime - t2) > 0.06) v2.currentTime = t2;
+      if (isPlaying && v2.paused) void v2.play().catch(() => {});
     }
 
-    if (activeVideoClip?.reverse) {
-      if (!video.paused) video.pause();
-      if (Math.abs(video.currentTime - targetSourceTime) > 0.03) {
-        video.currentTime = targetSourceTime;
+    // Sync vo source for overlay
+    if (vo && activeOverlayClip?.mediaUrl) {
+      if (vo.src !== activeOverlayClip.mediaUrl && !vo.src.endsWith(activeOverlayClip.mediaUrl)) {
+        vo.src = activeOverlayClip.mediaUrl;
       }
-      return;
+      const to = computeSourceTime(activeOverlayClip, storeCurrentTime);
+      if (Math.abs(vo.currentTime - to) > 0.06) vo.currentTime = to;
+      if (isPlaying && vo.paused) void vo.play().catch(() => {});
     }
 
-    const speed = activeVideoClip?.speed ?? 1.0;
-    if (video.playbackRate !== speed) {
-      video.playbackRate = speed;
+    // Render WebGL
+    if (transitionInfo && v1 && v2 && v1.readyState >= 2 && v2.readyState >= 2) {
+      // 20-transition GLSL rendering
+      renderer.renderTransition(v1, v2, transitionInfo.typeIndex, transitionInfo.progress);
+    } else if (v1 && v1.readyState >= 2 && activeVideoClip) {
+      const local = Math.max(0, storeCurrentTime - activeVideoClip.start);
+      const tf = evaluateClipTransforms(activeVideoClip, local);
+      renderer.renderLayer(v1, tf);
     }
 
-    if (isPlaying) {
-      if (video.paused) {
-        void video.play().catch(() => {});
-      }
-      // Avoid hard seeking while playing unless crossing a large clip boundary
-      if (Math.abs(video.currentTime - targetSourceTime) > 1.2) {
-        video.currentTime = targetSourceTime;
-      }
-    } else {
-      if (!video.paused) video.pause();
-      if (Math.abs(video.currentTime - targetSourceTime) > 0.05) {
-        video.currentTime = targetSourceTime;
-      }
+    // Render overlay (PIP)
+    if (vo && vo.readyState >= 2 && activeOverlayClip) {
+      const local = Math.max(0, storeCurrentTime - activeOverlayClip.start);
+      const tf = evaluateClipTransforms(activeOverlayClip, local);
+      renderer.renderLayer(vo, tf);
     }
-  }, [activeMediaUrl, activeVideoClip, targetSourceTime, isPlaying]);
+  }, [storeCurrentTime, activeVideoClip, nextVideoClip, transitionInfo, activeOverlayClip, isPlaying]);
 
-  const togglePlayback = useCallback(() => {
-    setIsPlaying(!isPlaying);
-  }, [isPlaying, setIsPlaying]);
+  const togglePlayback = useCallback(() => setIsPlaying(!isPlaying), [isPlaying, setIsPlaying]);
 
   useEffect(() => {
     onPlaybackControllerReady({ isPlaying, toggle: togglePlayback });
   }, [isPlaying, onPlaybackControllerReady, togglePlayback]);
+
+  const activeMediaUrl = activeVideoClip?.mediaUrl || media?.url || null;
+  const cssRatio = RatioProcessor.getCssRatio(aspectRatio);
 
   return (
     <section className="preview-workspace">
@@ -200,68 +233,41 @@ export function PreviewWorkspace({
               alignItems: "center",
               justifyContent: "center",
               overflow: "hidden",
-              width: "min(82%, 700px)",
-              aspectRatio: "16 / 9",
+              width: "min(88%, 700px)",
+              aspectRatio: cssRatio,
               background: "#000",
               borderRadius: "4px",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+              transition: "aspect-ratio 0.25s ease",
             }}
           >
-            {media?.type === "image" && !activeVideoClip ? (
-              <img
-                ref={imageRef}
-                src={activeMediaUrl}
-                alt="Preview"
-                className="preview-media"
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "contain",
-                  display: "block",
-                }}
-              />
-            ) : (
-              <video
-                ref={videoRef}
-                src={activeMediaUrl}
-                playsInline
-                preload="auto"
-                className="preview-media"
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "contain",
-                  display: "block",
-                }}
-                onLoadedMetadata={() => setVideoLoaded(true)}
-                onError={() => {
-                  console.error("Preview video failed to load or play.");
-                  setIsPlaying(false);
-                }}
-              />
-            )}
+            {/* Hidden media elements feeding WebGL textures */}
+            <video ref={videoPrimaryRef} playsInline preload="auto" muted style={{ display: "none" }} />
+            <video ref={videoSecondaryRef} playsInline preload="auto" muted style={{ display: "none" }} />
+            <video ref={videoOverlayRef} playsInline preload="auto" muted style={{ display: "none" }} />
 
-            {/* Text overlays rendered on top of active video */}
+            {/* Main WebGL canvas */}
+            <canvas ref={canvasRef} width={1280} height={720} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+
+            {/* Text overlays */}
             {textElements
-              .filter(
-                (element) =>
-                  storeCurrentTime >= element.start &&
-                  storeCurrentTime < element.start + element.duration
-              )
-              .map((element) => (
+              .filter((e) => storeCurrentTime >= e.start && storeCurrentTime < e.start + e.duration)
+              .map((e) => (
                 <div
+                  key={e.id}
                   className="text-overlay"
-                  key={element.id}
                   style={{
-                    left: `${element.x}%`,
-                    top: `${element.y}%`,
-                    color: element.color,
-                    fontSize: `${element.fontSize}px`,
-                    fontWeight: element.bold ? 700 : 400,
-                    fontStyle: element.italic ? "italic" : "normal",
-                    textAlign: element.alignment,
+                    position: "absolute",
+                    left: `${e.x}%`,
+                    top: `${e.y}%`,
+                    color: e.color,
+                    fontSize: `${e.fontSize}px`,
+                    fontWeight: e.bold ? 700 : 400,
+                    fontStyle: e.italic ? "italic" : "normal",
+                    textAlign: e.alignment,
                   }}
                 >
-                  {element.content}
+                  {e.content}
                 </div>
               ))}
           </div>
@@ -273,22 +279,48 @@ export function PreviewWorkspace({
         )}
       </div>
 
-      <div className="preview-status">
+      {/* Playback & Status Bar */}
+      <div className="preview-status" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span>
           {activeVideoClip ? (
             <>
-              {formatVideoTime(storeCurrentTime)}{" "}
-              <b>/ {formatVideoTime(storeDuration)}</b>
+              {formatVideoTime(storeCurrentTime)} <b>/ {formatVideoTime(storeDuration)}</b>
             </>
           ) : (
             "--:-- / --:--"
           )}
         </span>
-        <span className="original">
-          <span className="tiny-square" /> Original
-        </span>
+
+        {/* Phase 3 Ratio Selector & Cover Trigger */}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <RatioSelector />
+          <button
+            type="button"
+            title="Set Project Cover"
+            onClick={() => setCoverModalOpen(true)}
+            style={{
+              padding: "5px 9px",
+              fontSize: "11px",
+              backgroundColor: "#20252c",
+              border: "1px solid #333a44",
+              borderRadius: "5px",
+              color: "#e2e8f0",
+              cursor: "pointer",
+            }}
+          >
+            📸 Cover
+          </button>
+        </div>
+
         <EditorIcon name="fullscreen" />
       </div>
+
+      <CoverModal
+        isOpen={coverModalOpen}
+        onClose={() => setCoverModalOpen(false)}
+        canvasRef={canvasRef}
+        clipId={activeVideoClip?.id}
+      />
     </section>
   );
 }
