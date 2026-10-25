@@ -37,31 +37,41 @@ export interface EditorStoreState {
 }
 
 const defaultTracks: TrackModel[] = [
-  { id: "music-primary", label: "Music", type: "music", clipIds: ["music-primary-clip"] },
-  { id: "text", label: "Text", type: "text", clipIds: [] },
-  { id: "overlay-clip", label: "Overlay Clip", type: "video", clipIds: [] },
-  { id: "video", label: "Video", type: "video", clipIds: [] },
-  { id: "audio", label: "Audio", type: "audio", clipIds: ["audio-clip"] },
+  { id: "text", label: "Text", type: "text", clipIds: ["text-sample-clip"] },
+  { id: "overlay-clip", label: "Overlay", type: "video", clipIds: [] },
+  { id: "video", label: "Video", type: "video", clipIds: ["video-sample-clip"] },
+  { id: "audio", label: "Audio Track", type: "audio", clipIds: ["audio-sample-clip"] },
 ];
 
 const defaultClips: Record<string, ClipModel> = {
-  "music-primary-clip": {
-    id: "music-primary-clip",
-    trackId: "music-primary",
-    name: "Music  9.66",
-    type: "music",
+  "text-sample-clip": {
+    id: "text-sample-clip",
+    trackId: "text",
+    name: "Summer Adventure",
+    type: "text",
+    start: 0.5,
+    duration: 4.0,
+    color: "#0f766e",
+  },
+  "video-sample-clip": {
+    id: "video-sample-clip",
+    trackId: "video",
+    name: "Nature Drone Footage",
+    type: "video",
     start: 0,
     duration: 9.66,
-    color: "#252b30",
+    color: "#1e293b",
+    mediaUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    renderMediaUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
   },
-  "audio-clip": {
-    id: "audio-clip",
+  "audio-sample-clip": {
+    id: "audio-sample-clip",
     trackId: "audio",
-    name: "",
+    name: "Cinematic Horizon",
     type: "audio",
     start: 0,
     duration: 9.66,
-    color: "#38351b",
+    color: "#1e3a8a",
   },
 };
 

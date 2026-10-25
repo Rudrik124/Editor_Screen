@@ -23,6 +23,17 @@ export const layerVertexShaderSource = `
   }
 `;
 
+export const transitionVertexShaderSource = `
+  attribute vec2 a_position;
+  attribute vec2 a_texCoord;
+  varying vec2 v_texCoord;
+
+  void main() {
+    gl_Position = vec4(a_position, 0.0, 1.0);
+    v_texCoord = vec2(a_texCoord.x, 1.0 - a_texCoord.y);
+  }
+`;
+
 export const layerFragmentShaderSource = `
   precision mediump float;
   varying vec2 v_texCoord;
@@ -31,7 +42,7 @@ export const layerFragmentShaderSource = `
 
   void main() {
     vec4 color = texture2D(u_image, v_texCoord);
-    gl_FragColor = vec4(color.rgb, color.a * u_opacity);
+    gl_FragColor = vec4(color.rgb, u_opacity);
   }
 `;
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { X, CheckCircle, WarningCircle } from "@phosphor-icons/react";
 import { useEditorStore } from "../store/editor.store";
 import {
   submitTimelineRender,
@@ -147,7 +148,7 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
         <div className="export-modal-header">
           <h3>Export Timeline Video</h3>
           <button className="close-btn" onClick={onClose} aria-label="Close">
-            ✕
+            <X size={16} weight="bold" />
           </button>
         </div>
 
@@ -215,7 +216,9 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
 
           {jobStatus === "COMPLETED" && downloadUrl && (
             <div className="completed-section">
-              <div className="success-icon">✓</div>
+              <div className="success-icon" style={{ display: "flex", justifyContent: "center", marginBottom: "8px" }}>
+                <CheckCircle size={44} weight="fill" color="#10b981" />
+              </div>
               <h4>Export Complete!</h4>
               <p>Your video has been rendered and encoded successfully.</p>
               <a
@@ -229,8 +232,9 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
           )}
 
           {errorMessage && (
-            <div className="export-error-banner">
-              ⚠️ {errorMessage}
+            <div className="export-error-banner" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <WarningCircle size={16} weight="fill" color="#ef4444" />
+              <span>{errorMessage}</span>
             </div>
           )}
         </div>

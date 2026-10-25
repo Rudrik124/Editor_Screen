@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { X } from "@phosphor-icons/react";
 import {
   TRANSITION_CATEGORIES,
   VEYTRIX_TRANSITIONS,
@@ -97,15 +98,17 @@ export function TransitionModal({
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close"
             style={{
               background: "none",
               border: "none",
               color: "#8b949e",
-              fontSize: "18px",
               cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
             }}
           >
-            ✕
+            <X size={16} weight="bold" />
           </button>
         </div>
 

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { DiamondsFour, X } from "@phosphor-icons/react";
 import { useKeyframeState } from "./keyframe.state";
 import { KeyframeProcessor } from "./keyframe.processor";
 import { KeyframeProperty } from "../../types/editor.types";
@@ -152,7 +153,10 @@ export function KeyframeInspector({ clipId }: KeyframeInspectorProps) {
                 }}
               >
                 <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                  <span style={{ color: "#38bdf8" }}>◆ {k.timeOffset.toFixed(2)}s</span>
+                  <span style={{ color: "#38bdf8", display: "flex", alignItems: "center", gap: "4px" }}>
+                    <DiamondsFour size={12} weight="fill" />
+                    <span>{k.timeOffset.toFixed(2)}s</span>
+                  </span>
                   <span style={{ color: "#cbd5e1" }}>{k.property}:</span>
                   <span style={{ fontWeight: 600 }}>{k.value}</span>
                   <span style={{ color: "#64748b", fontSize: "10px" }}>({k.interpolation || "linear"})</span>
@@ -161,15 +165,17 @@ export function KeyframeInspector({ clipId }: KeyframeInspectorProps) {
                   type="button"
                   disabled={!canEdit}
                   onClick={() => KeyframeProcessor.removeKeyframe(clipId, k.id)}
+                  aria-label="Remove keyframe"
                   style={{
                     background: "none",
                     border: "none",
                     color: "#f87171",
-                    fontSize: "12px",
+                    display: "flex",
+                    alignItems: "center",
                     cursor: "pointer",
                   }}
                 >
-                  ✕
+                  <X size={12} weight="bold" />
                 </button>
               </div>
             ))}

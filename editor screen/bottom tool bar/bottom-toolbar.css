@@ -1,15 +1,16 @@
+/* ==========================================================================
+   Veytrix Studio — Timeline Editing Action Toolbar
+   ========================================================================== */
+
 .veytrix-bottom-toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 34px;
-  color: #a1a7af;
+  gap: 2px;
+  height: 38px;
+  color: #94a3b8;
   white-space: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-x: contain;
-  touch-action: pan-x;
   padding: 0 4px;
 }
 
@@ -17,56 +18,89 @@
   display: none;
 }
 
-.veytrix-bottom-toolbar__group {
+.toolbar-cluster {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
+}
+
+.toolbar-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 7px;
+  height: 28px;
+  border-radius: 4px;
+  transition: all 0.12s ease;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #cbd5e1;
+  font-size: 11.5px;
+  font-weight: 500;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.toolbar-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #2b3341;
+  color: #ffffff;
+}
+
+.toolbar-item:active {
+  transform: scale(0.96);
+}
+
+.toolbar-item button.icon-button {
+  background: none;
+  border: none;
+  padding: 0 !important;
+  margin: 0;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.toolbar-item-label {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: inherit;
+  line-height: 1;
+}
+
+.toolbar-item.delete-item:hover {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.3);
+  background: rgba(239, 68, 68, 0.1);
 }
 
 .veytrix-bottom-toolbar__separator {
-  height: 20px;
-  border-left: 1px solid #343940;
+  height: 16px;
+  border-left: 1px solid #28303d;
   margin: 0 4px;
   flex-shrink: 0;
 }
 
-.veytrix-bottom-toolbar button {
-  display: grid;
-  place-items: center;
-  min-width: 32px;
-  min-height: 32px;
-  padding: 4px;
-  color: inherit;
-  border: 0;
-  background: transparent;
-  border-radius: 6px;
-  touch-action: manipulation;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-  transition: transform 100ms cubic-bezier(0.16, 1, 0.3, 1), background-color 100ms ease;
-  flex-shrink: 0;
-}
-
-.veytrix-bottom-toolbar button:active {
-  transform: scale(0.92);
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.veytrix-bottom-toolbar button:disabled {
-  opacity: 0.35;
-  pointer-events: none;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .veytrix-bottom-toolbar button:hover:not(:disabled) {
-    color: #e8eaed;
-    background: rgba(255, 255, 255, 0.05);
+/* Responsiveness: On 15-inch laptops and narrower, selectively collapse labels to prevent wrapping */
+@media (max-width: 1280px) {
+  .toolbar-item:has(button[aria-label="Rename"]) .toolbar-item-label,
+  .toolbar-item:has(button[aria-label="Reverse"]) .toolbar-item-label,
+  .toolbar-item:has(button[aria-label="Freeze Frame"]) .toolbar-item-label,
+  .toolbar-item:has(button[aria-label="Lock"]) .toolbar-item-label {
+    display: none;
   }
 }
 
-.veytrix-bottom-toolbar svg {
-  width: 20px;
-  height: 20px;
-  display: block;
+@media (max-width: 1024px) {
+  .toolbar-item-label {
+    display: none !important;
+  }
+  .toolbar-item {
+    padding: 0 6px;
+  }
 }

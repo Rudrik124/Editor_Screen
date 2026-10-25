@@ -1,126 +1,247 @@
-.timeline-tools {
-  display: flex;
-  align-items: center;
-  padding: 0 18px;
-  border-bottom: 1px solid #282c32;
-  background: #1a1c21;
+/* ==========================================================================
+   Veytrix Studio — Timeline Architecture (CapCut / VN Multi-Track System)
+   ========================================================================== */
+
+:root {
+  --track-header-w: 160px;
+  --track-h: 40px;
+  --track-gap-r: 16px;
 }
 
-.cover-button {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: #9198a0 !important;
-  padding: 5px 10px !important;
-  border: 1px solid #363b43 !important;
-  border-radius: 4px !important;
+@media (max-width: 1023px) and (min-width: 769px) {
+  :root {
+    --track-header-w: 155px;
+    --track-h: 38px;
+    --track-gap-r: 12px;
+  }
 }
 
-.tool-strip {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #8a919a;
-}
+@media (max-width: 768px) {
+  :root {
+    --track-header-w: 48px;
+    --track-h: 38px;
+    --track-gap-r: 10px;
+  }
 
-.tool-strip button {
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-}
+  .track-header {
+    justify-content: center !important;
+    padding: 0 !important;
+  }
 
-.tool-strip i {
-  height: 18px;
-  border-left: 1px solid #3c4148;
-  margin: 0 7px;
+  .track-header-left {
+    justify-content: center !important;
+    flex: none !important;
+  }
+
+  .track-header-left .track-title,
+  .track-header-actions {
+    display: none !important;
+  }
 }
 
 .timeline-workspace {
   display: flex;
-  min-height: 0;
-  background: #191b20;
-  position: relative;
-}
-
-.track-adders {
-  width: 52px;
-  flex: none;
-  border-right: 1px solid var(--line);
-  display: flex;
   flex-direction: column;
-  align-items: center;
-  padding-top: 27px;
-  gap: 12px;
-  color: #7e858e;
-}
-
-.track-adders button {
-  width: 25px;
-  height: 25px;
-  display: grid;
-  place-items: center;
+  min-height: 0;
+  height: 100%;
+  background: #0c0e12;
+  position: relative;
+  flex: 1;
+  overflow: hidden;
 }
 
 .timeline-main {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   position: relative;
-  overflow: hidden;
-  padding-top: 0;
+  overflow-x: auto;
+  overflow-y: auto;
   cursor: pointer;
+  background: #0c0e12;
 }
 
-.ruler {
-  height: 28px;
-  display: grid;
-  grid-template-columns: 44px repeat(10, 1fr);
-  align-items: end;
-  color: #767d87;
-  font-size: 9px;
-  padding-right: 16px;
-}
-
-.ruler span {
-  text-align: left;
-  border-left: 1px solid #30343a;
-  height: 10px;
-  padding-left: 4px;
-}
-
-.ruler-spacer {
-  height: 10px;
-}
-
-.track-row {
-  height: 43px;
+/* 1. TIMELINE RULER */
+.timeline-ruler {
+  height: 24px;
+  min-height: 24px;
   display: flex;
-}
-
-.track-label {
-  width: 44px;
+  align-items: stretch;
+  background: #13161c;
+  border-bottom: 1px solid #1e232c;
   flex: none;
-  color: #69717a;
-  font-size: 9px;
-  padding-top: 8px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  user-select: none;
 }
 
+.ruler-header-spacer {
+  width: var(--track-header-w);
+  flex-shrink: 0;
+  border-right: 1px solid #1e232c;
+  background: #13161c;
+}
+
+.ruler-ticks-track {
+  flex: 1;
+  position: relative;
+  margin-right: var(--track-gap-r);
+  height: 100%;
+}
+
+.ruler-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding-left: 4px;
+  pointer-events: none;
+  border-left: 1px solid #252b36;
+}
+
+.ruler-tick-time {
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #64748b;
+  line-height: 1;
+  padding-bottom: 4px;
+  white-space: nowrap;
+}
+
+/* 2. TRACK ROWS */
+.track-row {
+  height: var(--track-h);
+  min-height: var(--track-h);
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #191c24;
+  background: #0c0e12;
+  transition: background 0.12s ease;
+  position: relative;
+}
+
+.track-row:hover {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.track-row.track-hidden {
+  opacity: 0.35;
+}
+
+.track-row.track-locked {
+  pointer-events: none;
+}
+
+/* 3. TRACK HEADER (LEFT COLUMN) */
+.track-header {
+  width: var(--track-header-w);
+  flex-shrink: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  border-right: 1px solid #1e232c;
+  background: #13161c;
+  user-select: none;
+  z-index: 5;
+}
+
+.track-header-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.track-type-icon {
+  display: grid;
+  place-items: center;
+  color: #828ea2;
+  flex-shrink: 0;
+}
+
+.track-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #cbd5e1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+.track-mini-btn {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  color: #5d6d82;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.12s ease;
+}
+
+.track-mini-btn:hover {
+  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.track-mini-btn.active-muted {
+  color: #ef4444;
+  opacity: 1;
+}
+
+.track-mini-btn.active-hidden {
+  color: #f59e0b;
+  opacity: 1;
+}
+
+.track-mini-btn.active-locked {
+  color: #0ea5e9;
+  opacity: 1;
+}
+
+/* 4. TRACK CONTENT & CLIPS */
 .track-content {
   position: relative;
   flex: 1;
-  margin-right: 16px;
-  border-top: 1px solid #292d33;
+  margin-right: var(--track-gap-r);
+  height: 100%;
 }
 
 .timeline-clip {
   position: absolute;
   top: 4px;
-  height: 34px;
-  border-radius: 2px;
-  overflow: visible;
-  color: #cdd3d7;
-  font-size: 9px;
+  bottom: 4px;
+  height: calc(var(--track-h) - 8px);
+  border-radius: 4px;
+  overflow: hidden;
+  color: #f1f5f9;
+  font-size: 10px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  cursor: grab;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  user-select: none;
+}
+
+.timeline-clip:active {
+  cursor: grabbing;
 }
 
 .clip-visual {
@@ -128,42 +249,42 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
-  border-radius: 2px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  position: relative;
 }
 
-.text-clip {
-  top: 0;
+.timeline-clip.selected .clip-visual {
+  border: 2px solid #0ea5e9;
+  box-shadow: 0 0 8px rgba(14, 165, 233, 0.4);
 }
 
 .clip-label {
   position: absolute;
-  left: 8px;
-  top: 9px;
-  z-index: 2;
-}
-
-.text-clip .clip-label {
-  top: 0;
-  line-height: 1;
-  color: #a7d2cd;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  font-size: 10px;
+  font-weight: 600;
+  color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - 16px);
 }
 
-.video-clip {
-  border: 1px solid transparent;
-}
-
-.video-clip.selected {
-  border: 2px solid var(--yellow);
-  top: 2px;
-  height: 38px;
+.text-clip .clip-visual {
+  background: linear-gradient(135deg, #065f46, #047857);
 }
 
 .thumbnails {
   display: flex;
   width: 100%;
   height: 100%;
-  opacity: 0.92;
+  opacity: 0.9;
   overflow: hidden;
   pointer-events: none;
 }
@@ -173,152 +294,116 @@
   height: 100%;
   min-width: 0;
   object-fit: cover;
-  border-right: 1px solid rgba(0, 0, 0, 0.45);
-  display: block;
+  border-right: 1px solid rgba(0, 0, 0, 0.4);
 }
 
-.thumb-1 {
-  background: linear-gradient(
-    140deg,
-    #7f9792,
-    #cbd0c8 42%,
-    #536266 43% 68%,
-    #b9c3be 69%
-  );
-}
-
-.thumb-2 {
-  background: linear-gradient(
-    140deg,
-    #bec8c1,
-    #4b5b60 36%,
-    #d7dbd5 37% 72%,
-    #728087 73%
-  );
-}
-
-.thumb-3 {
-  background: linear-gradient(
-    140deg,
-    #526871,
-    #d3d8d2 28% 55%,
-    #80908a 56% 78%,
-    #c3cbc2 79%
-  );
-}
-
-.audio-clip {
-  height: 20px;
-  top: 7px;
+.audio-clip .clip-visual {
   background: repeating-linear-gradient(
     90deg,
-    #3b391e 0 18px,
-    #443f1c 19px 21px
+    #1e293b 0 20px,
+    #334155 21px 23px
   );
 }
 
+.music-clip .clip-visual {
+  background: repeating-linear-gradient(
+    90deg,
+    #1e1b4b 0 20px,
+    #312e81 21px 23px
+  );
+}
+
+/* 5. RESIZE TRIM HANDLES */
 .trim-handle {
   position: absolute;
-  top: 5px;
-  width: 6px;
-  height: 24px;
-  margin-top: -7px;
-  background: #f4d45b;
-  z-index: 3;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  background: #0ea5e9;
+  z-index: 4;
   cursor: ew-resize;
-  opacity: 0.9;
   border-radius: 2px;
+  opacity: 0.9;
 }
 
 .trim-handle.left {
-  left: -2px;
+  left: 0;
 }
 
 .trim-handle.right {
-  right: -1px;
+  right: 0;
 }
 
-.video-resize-handle {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.video-clip:hover .video-resize-handle,
-.video-clip.selected .video-resize-handle {
+.trim-handle:hover {
   opacity: 1;
-  pointer-events: auto;
+  background: #38bdf8;
 }
 
+/* 6. PLAYHEAD */
 .playhead {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 1px;
-  background: #ef5d65;
-  z-index: 5;
+  width: 1.5px;
+  background: #f43f5e;
+  z-index: 25;
   pointer-events: none;
+  box-shadow: 0 0 6px rgba(244, 63, 94, 0.7);
+  transform: translateX(-50%);
 }
 
 .playhead span {
   position: absolute;
   top: 0;
-  left: -4px;
-  width: 9px;
-  height: 8px;
-  background: #ef5d65;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 11px;
+  height: 10px;
+  background: #f43f5e;
   clip-path: polygon(0 0, 100% 0, 50% 100%);
 }
 
+/* 7. BLANK GAP ZONE */
 .timeline-gap-zone {
   position: absolute;
-  top: 2px;
-  bottom: 2px;
+  top: 3px;
+  bottom: 3px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: repeating-linear-gradient(
     -45deg,
     rgba(255, 255, 255, 0.02) 0 6px,
-    rgba(255, 255, 255, 0.06) 6px 12px
+    rgba(255, 255, 255, 0.05) 6px 12px
   );
-  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border: 1px dashed rgba(255, 255, 255, 0.16);
   border-radius: 4px;
   cursor: pointer;
   z-index: 4;
-  touch-action: manipulation;
-  transition: background 150ms ease, border-color 150ms ease;
+  transition: all 120ms ease;
 }
 
 .timeline-gap-zone:hover {
-  background: rgba(239, 93, 101, 0.15);
-  border-color: rgba(239, 93, 101, 0.5);
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.5);
 }
 
 .gap-delete-pill {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: #252a32;
-  color: #dfe3e7;
-  border: 1px solid #454d59;
+  background: #1c212a;
+  color: #cbd5e1;
+  border: 1px solid #333d4d;
   border-radius: 4px;
-  padding: 2px 7px;
+  padding: 2px 6px;
   font-size: 10px;
   font-weight: 600;
   white-space: nowrap;
-  pointer-events: auto;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  touch-action: manipulation;
-  transition: transform 100ms cubic-bezier(0.16, 1, 0.3, 1), background-color 100ms ease;
 }
 
 .timeline-gap-zone:hover .gap-delete-pill {
-  background: #c53030;
-  border-color: #ef5d65;
+  background: #dc2626;
+  border-color: #ef4444;
   color: #fff;
-  transform: scale(1.05);
-}
-
-.gap-delete-pill:active {
-  transform: scale(0.92);
 }

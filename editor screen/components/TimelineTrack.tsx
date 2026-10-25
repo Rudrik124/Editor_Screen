@@ -1,3 +1,17 @@
+import { useState } from "react";
+import {
+  VideoCamera,
+  PictureInPicture,
+  TextT,
+  MusicNotes,
+  SpeakerHigh,
+  SpeakerSlash,
+  Eye,
+  EyeSlash,
+  LockSimple,
+  LockSimpleOpen,
+  X,
+} from "@phosphor-icons/react";
 import { Track, TimelineClip as TimelineClipData } from "../types/editor.types";
 import { TimelineClip } from "./TimelineClip";
 import { useEditorStore } from "../store/editor.store";
@@ -15,6 +29,9 @@ export function TimelineTrack({
   onResizeClip?: (clip: TimelineClipData, edge: "left" | "right", seconds: number) => void;
   timelineDuration?: number;
 }) {
+  const [muted, setMuted] = useState(false);
+  const [hidden, setHidden] = useState(false);
+  const [locked, setLocked] = useState(false);
   const dispatch = useEditorStore((state) => state.dispatch);
 
   // Detect blank gaps between consecutive clips
@@ -43,9 +60,62 @@ export function TimelineTrack({
     });
   };
 
+  const renderTrackIcon = () => {
+    if (track.type === "video") {
+      return track.id.includes("overlay") ? (
+        <PictureInPicture size={14} weight="regular" />
+      ) : (
+        <VideoCamera size={14} weight="regular" />
+      );
+    }
+    if (track.type === "text") return <TextT size={14} weight="regular" />;
+    if (track.type === "music") return <MusicNotes size={14} weight="regular" />;
+    return <SpeakerHigh size={14} weight="regular" />;
+  };
+
   return (
-    <div className={`track-row ${track.type}-row`}>
-      <div className="track-label">{track.label}</div>
+    <div className={`track-row ${track.type}-row ${hidden ? "track-hidden" : ""} ${locked ? "track-locked" : ""}`}>
+      {/* CapCut-style Track Header on the left */}
+      <div className="track-header" title={`${track.label} Track`}>
+        <div className="track-header-left">
+          <span className="track-type-icon">{renderTrackIcon()}</span>
+          <span className="track-title">{track.label}</span>
+        </div>
+        <div className="track-header-actions">
+          {track.type !== "text" && (
+            <button
+              type="button"
+              className={`track-mini-btn ${muted ? "active-muted" : ""}`}
+              title={muted ? "Unmute track" : "Mute track"}
+              onClick={() => setMuted(!muted)}
+              aria-label={muted ? "Unmute track" : "Mute track"}
+            >
+              {muted ? <SpeakerSlash size={13} weight="bold" /> : <SpeakerHigh size={13} weight="regular" />}
+            </button>
+          )}
+          {track.type !== "audio" && track.type !== "music" && (
+            <button
+              type="button"
+              className={`track-mini-btn ${hidden ? "active-hidden" : ""}`}
+              title={hidden ? "Show track" : "Hide track"}
+              onClick={() => setHidden(!hidden)}
+              aria-label={hidden ? "Show track" : "Hide track"}
+            >
+              {hidden ? <EyeSlash size={13} weight="bold" /> : <Eye size={13} weight="regular" />}
+            </button>
+          )}
+          <button
+            type="button"
+            className={`track-mini-btn ${locked ? "active-locked" : ""}`}
+            title={locked ? "Unlock track" : "Lock track"}
+            onClick={() => setLocked(!locked)}
+            aria-label={locked ? "Unlock track" : "Lock track"}
+          >
+            {locked ? <LockSimple size={13} weight="bold" /> : <LockSimpleOpen size={13} weight="regular" />}
+          </button>
+        </div>
+      </div>
+
       <div className="track-content">
         {/* Render clips */}
         {track.clips.map((clip) => (
@@ -79,9 +149,7 @@ export function TimelineTrack({
               className="gap-delete-pill"
               aria-label="Delete empty space"
             >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
+              <X size={10} weight="bold" />
               <span>Delete Gap</span>
             </button>
           </div>
@@ -90,4 +158,3 @@ export function TimelineTrack({
     </div>
   );
 }
-

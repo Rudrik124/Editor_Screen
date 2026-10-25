@@ -120,16 +120,30 @@ class TransitionPlugin(BasePipelinePlugin):
         context: CompilationContext,
         stream: FilterStream
     ) -> FilterStream:
-        """Ensures stream PTS starts strictly at 0 for FFmpeg xfade input."""
-        norm_label = context.generate_label("v_pts_zero")
+        """Ensures stream PTS starts strictly at 0, has constant frame rate and valid timebase for FFmpeg xfade."""
+        pts_label = context.generate_label("v_pts_zero")
         context.add_node(FilterNode(
             filter_name="setpts",
             inputs=[stream.name],
-            outputs=[norm_label],
+            outputs=[pts_label],
             args={"expr": "PTS-STARTPTS"}
         ))
+        fps_label = context.generate_label("v_fps_xfade")
+        context.add_node(FilterNode(
+            filter_name="fps",
+            inputs=[pts_label],
+            outputs=[fps_label],
+            args={"fps": str(context.fps)}
+        ))
+        tb_label = context.generate_label("v_tb_xfade")
+        context.add_node(FilterNode(
+            filter_name="settb",
+            inputs=[fps_label],
+            outputs=[tb_label],
+            args={"expr": "AVTB"}
+        ))
         return FilterStream(
-            name=norm_label,
+            name=tb_label,
             stream_type="video",
             duration=stream.duration
         )

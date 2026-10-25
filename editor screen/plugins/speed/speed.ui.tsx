@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Gauge } from "@phosphor-icons/react";
 import { useSpeedState } from "./speed.state";
 import { SpeedProcessor } from "./speed.processor";
 
@@ -47,20 +48,13 @@ export function SpeedToolbarButton() {
         style={{
           opacity: canSetSpeed ? 1 : 0.4,
           cursor: canSetSpeed ? "pointer" : "not-allowed",
-          padding: "4px 6px",
-          display: "flex",
+          display: "inline-flex",
           alignItems: "center",
-          gap: "2px",
-          fontSize: "11px",
-          fontWeight: 600,
+          gap: "3px",
           color: currentSpeed !== 1.0 ? "#20b8a1" : "inherit",
         }}
       >
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="12" cy="12" r="10" />
-          <polyline points="12 6 12 12 16 14" />
-        </svg>
-        <span>{currentSpeed}x</span>
+        <Gauge size={14} weight="regular" />
       </button>
 
       {open && canSetSpeed && createPortal(

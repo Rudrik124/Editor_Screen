@@ -1,4 +1,5 @@
 import React from "react";
+import { Camera, X } from "@phosphor-icons/react";
 import { useCoverState } from "./cover.state";
 import { CoverProcessor } from "./cover.processor";
 
@@ -51,9 +52,10 @@ export function CoverModal({ isOpen, onClose, canvasRef, clipId }: CoverModalPro
           <button
             type="button"
             onClick={onClose}
-            style={{ background: "none", border: "none", color: "#8b949e", cursor: "pointer", fontSize: "16px" }}
+            aria-label="Close"
+            style={{ background: "none", border: "none", color: "#8b949e", cursor: "pointer", display: "flex", alignItems: "center" }}
           >
-            ✕
+            <X size={16} weight="bold" />
           </button>
         </div>
 
@@ -90,9 +92,13 @@ export function CoverModal({ isOpen, onClose, canvasRef, clipId }: CoverModalPro
               border: "1px solid #3b4250",
               borderRadius: "5px",
               cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
             }}
           >
-            📸 Capture Current Frame
+            <Camera size={14} weight="regular" />
+            <span>Capture Current Frame</span>
           </button>
           <button
             type="button"

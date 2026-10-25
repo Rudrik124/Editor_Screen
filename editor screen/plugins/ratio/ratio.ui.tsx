@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { CaretDown, Check } from "@phosphor-icons/react";
 import { useRatioState } from "./ratio.state";
 import { RATIO_PRESETS, RatioProcessor } from "./ratio.processor";
 import { AspectRatio } from "../../types/editor.types";
@@ -30,7 +31,7 @@ export function RatioSelector() {
       >
         <span>Ratio:</span>
         <strong style={{ color: "#38bdf8" }}>{currentPreset.id}</strong>
-        <span style={{ fontSize: "10px", color: "#8b949e" }}>▼</span>
+        <CaretDown size={11} weight="bold" color="#8b949e" />
       </button>
 
       {open && (
@@ -78,7 +79,7 @@ export function RatioSelector() {
                   }}
                 >
                   <span>{p.label}</span>
-                  {isSelected && <span style={{ color: "#38bdf8" }}>✓</span>}
+                  {isSelected && <Check size={13} weight="bold" color="#38bdf8" />}
                 </button>
               );
             })}

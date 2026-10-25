@@ -5,17 +5,11 @@ export const transitionsGLSL = `
 #define PI 3.14159265359
 
 vec4 getFromColor(vec2 uv) {
-  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
-    return vec4(0.0, 0.0, 0.0, 1.0);
-  }
-  return texture2D(u_from, uv);
+  return texture2D(u_from, clamp(uv, 0.0, 1.0));
 }
 
 vec4 getToColor(vec2 uv) {
-  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
-    return vec4(0.0, 0.0, 0.0, 1.0);
-  }
-  return texture2D(u_to, uv);
+  return texture2D(u_to, clamp(uv, 0.0, 1.0));
 }
 
 vec2 rotateUV(vec2 uv, float angle) {
@@ -28,19 +22,37 @@ vec2 rotateUV(vec2 uv, float angle) {
 }
 
 vec4 sampleBlur(sampler2D tex, vec2 uv, vec2 dir, float radius) {
-  vec4 color = vec4(0.0);
-  color += texture2D(tex, uv - dir * radius * 2.0) * 0.1;
-  color += texture2D(tex, uv - dir * radius) * 0.2;
-  color += texture2D(tex, uv) * 0.4;
-  color += texture2D(tex, uv + dir * radius) * 0.2;
-  color += texture2D(tex, uv + dir * radius * 2.0) * 0.1;
+  vec4 color = texture2D(tex, clamp(uv, 0.0, 1.0)) * 0.28;
+  color += (texture2D(tex, clamp(uv - dir * radius * 0.4, 0.0, 1.0)) + texture2D(tex, clamp(uv + dir * radius * 0.4, 0.0, 1.0))) * 0.21;
+  color += (texture2D(tex, clamp(uv - dir * radius * 0.8, 0.0, 1.0)) + texture2D(tex, clamp(uv + dir * radius * 0.8, 0.0, 1.0))) * 0.11;
+  color += (texture2D(tex, clamp(uv - dir * radius * 1.2, 0.0, 1.0)) + texture2D(tex, clamp(uv + dir * radius * 1.2, 0.0, 1.0))) * 0.04;
+  return color;
+}
+
+vec4 sampleGaussianBlur(sampler2D tex, vec2 uv, float radius) {
+  vec4 color = texture2D(tex, clamp(uv, 0.0, 1.0)) * 0.22;
+  vec2 offH1 = vec2(radius * 0.45, 0.0);
+  vec2 offH2 = vec2(radius * 0.95, 0.0);
+  vec2 offV1 = vec2(0.0, radius * 0.45);
+  vec2 offV2 = vec2(0.0, radius * 0.95);
+  vec2 offD1 = vec2(radius * 0.55, radius * 0.55);
+  vec2 offD2 = vec2(-radius * 0.55, radius * 0.55);
+
+  color += (texture2D(tex, clamp(uv + offH1, 0.0, 1.0)) + texture2D(tex, clamp(uv - offH1, 0.0, 1.0))) * 0.15;
+  color += (texture2D(tex, clamp(uv + offH2, 0.0, 1.0)) + texture2D(tex, clamp(uv - offH2, 0.0, 1.0))) * 0.07;
+  color += (texture2D(tex, clamp(uv + offV1, 0.0, 1.0)) + texture2D(tex, clamp(uv - offV1, 0.0, 1.0))) * 0.15;
+  color += (texture2D(tex, clamp(uv + offV2, 0.0, 1.0)) + texture2D(tex, clamp(uv - offV2, 0.0, 1.0))) * 0.07;
+  color += (texture2D(tex, clamp(uv + offD1, 0.0, 1.0)) + texture2D(tex, clamp(uv - offD1, 0.0, 1.0))) * 0.05;
+  color += (texture2D(tex, clamp(uv + offD2, 0.0, 1.0)) + texture2D(tex, clamp(uv - offD2, 0.0, 1.0))) * 0.05;
   return color;
 }
 
 vec4 computeTransition(int type, vec2 uv, float p, vec3 dipColor) {
+  float sp = smoothstep(0.0, 1.0, p);
+
   // 1. Cross Dissolve
   if (type == 0) {
-    return mix(getFromColor(uv), getToColor(uv), p);
+    return mix(getFromColor(uv), getToColor(uv), sp);
   }
   // 2. Fade to Black
   if (type == 1) {
@@ -138,28 +150,20 @@ vec4 computeTransition(int type, vec2 uv, float p, vec3 dipColor) {
   }
   // 19. Motion Blur
   if (type == 18) {
-    float blur = sin(p * PI) * 0.06;
-    vec4 fromB = sampleBlur(u_from, uv, vec2(0.7, 0.7), blur);
-    vec4 toB = sampleBlur(u_to, uv, vec2(0.7, 0.7), blur);
-    return mix(fromB, toB, p);
+    float blur = sin(p * PI) * 0.065;
+    vec4 fromB = sampleBlur(u_from, uv, vec2(0.7071, 0.7071), blur);
+    vec4 toB = sampleBlur(u_to, uv, vec2(0.7071, 0.7071), blur);
+    return mix(fromB, toB, sp);
   }
   // 20. Gaussian Blur
   if (type == 19) {
-    float blur = sin(p * PI) * 0.05;
-    vec4 colFrom = (
-      getFromColor(uv) * 0.36 +
-      (getFromColor(uv + vec2(blur, 0.0)) + getFromColor(uv - vec2(blur, 0.0))) * 0.2 +
-      (getFromColor(uv + vec2(0.0, blur)) + getFromColor(uv - vec2(0.0, blur))) * 0.12
-    );
-    vec4 colTo = (
-      getToColor(uv) * 0.36 +
-      (getToColor(uv + vec2(blur, 0.0)) + getToColor(uv - vec2(blur, 0.0))) * 0.2 +
-      (getToColor(uv + vec2(0.0, blur)) + getToColor(uv - vec2(0.0, blur))) * 0.12
-    );
-    return mix(colFrom, colTo, p);
+    float blur = sin(p * PI) * 0.045;
+    vec4 colFrom = sampleGaussianBlur(u_from, uv, blur);
+    vec4 colTo = sampleGaussianBlur(u_to, uv, blur);
+    return mix(colFrom, colTo, sp);
   }
 
-  // Fallback linear mix
-  return mix(getFromColor(uv), getToColor(uv), p);
+  // Fallback linear mix with smoothstep
+  return mix(getFromColor(uv), getToColor(uv), sp);
 }
 `;

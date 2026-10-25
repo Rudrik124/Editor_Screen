@@ -1,3 +1,4 @@
+import { ArrowLineLeft, ArrowLineRight } from "@phosphor-icons/react";
 import { useTrimState } from "./trim.state";
 import { TrimProcessor } from "./trim.processor";
 import { useEditorStore } from "../../store/editor.store";
@@ -29,46 +30,40 @@ export function TrimToolbarButton() {
     currentTime < selectedClip.start + selectedClip.duration;
 
   return (
-    <div className="trim-buttons" style={{ display: "inline-flex", gap: "2px" }}>
+    <div className="trim-buttons" style={{ display: "inline-flex", gap: "2px", alignItems: "center" }}>
       <button
         type="button"
         className="icon-button"
-        title="Trim Start to Playhead"
-        aria-label="Trim Start"
+        title="Trim Left Edge to Playhead"
+        aria-label="Trim Left"
         disabled={!canTrimLeft}
         onClick={handleTrimStartAtPlayhead}
         style={{
           opacity: canTrimLeft ? 1 : 0.4,
           cursor: canTrimLeft ? "pointer" : "not-allowed",
-          padding: "4px 6px",
-          display: "flex",
+          display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M4 6v12M9 6l-5 6 5 6M20 6v12" />
-        </svg>
+        <ArrowLineLeft size={14} weight="bold" />
       </button>
       <button
         type="button"
         className="icon-button"
-        title="Trim End to Playhead"
-        aria-label="Trim End"
+        title="Trim Right Edge to Playhead"
+        aria-label="Trim Right"
         disabled={!canTrimRight}
         onClick={handleTrimEndAtPlayhead}
         style={{
           opacity: canTrimRight ? 1 : 0.4,
           cursor: canTrimRight ? "pointer" : "not-allowed",
-          padding: "4px 6px",
-          display: "flex",
+          display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M4 6v12M15 6l5 6-5 6M20 6v12" />
-        </svg>
+        <ArrowLineRight size={14} weight="bold" />
       </button>
     </div>
   );

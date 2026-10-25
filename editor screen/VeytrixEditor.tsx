@@ -5,11 +5,11 @@ import "./styles/editor-layout-fixes.css";
 import { useEffect, useRef, useState } from "react";
 import { EditorHeader } from "./components/EditorHeader";
 import { MediaLibrary } from "./components/MediaLibrary";
-import { PlaybackBar } from "./components/PlaybackBar";
 import { PreviewWorkspace } from "./components/PreviewWorkspace";
 import { RightInspector } from "./components/RightInspector";
 import { TimelineToolbar } from "./components/TimelineToolbar";
 import { TimelineWorkspace } from "./components/TimelineWorkspace";
+import { MobileToolDock } from "./components/MobileToolDock";
 import { createVideoAsset } from "./left-side toolbar/functionality/Video/functionality/createVideoAsset";
 import { VideoAsset, ClipModel } from "./types/editor.types";
 import { useTextElements } from "./left-side toolbar/functionality/text/functionality/useTextElements";
@@ -18,14 +18,18 @@ import { useEditorKeyboardShortcuts } from "./hooks/useEditorKeyboardShortcuts";
 import { uploadAsset } from "./services/backendApi";
 
 export function VeytrixEditor() {
-  // Bind global keyboard shortcuts (Ctrl+Z, Ctrl+Shift+Z, S, Del)
+  // Bind global keyboard shortcuts (Ctrl+Z, Ctrl+Shift+Z, S, Del, Space)
   useEditorKeyboardShortcuts();
 
   const [media, setMedia] = useState<{
     url: string;
     type: "video" | "image";
     name: string;
-  } | null>(null);
+  } | null>({
+    url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    type: "video",
+    name: "Nature Drone Footage",
+  });
   const [videoAssets, setVideoAssets] = useState<VideoAsset[]>([]);
   const [addedVideoIds, setAddedVideoIds] = useState<string[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -189,6 +193,9 @@ export function VeytrixEditor() {
           <MediaLibrary
             onMediaSelected={handleMediaSelected}
             error={uploadError}
+            videoAssets={videoAssets}
+            onAddVideo={addVideoToTimeline}
+            onAddText={text.add}
           />
           <PreviewWorkspace
             media={media}
@@ -204,10 +211,6 @@ export function VeytrixEditor() {
             onDeleteText={text.remove}
           />
         </div>
-        <PlaybackBar
-          isPlaying={playbackController.isPlaying}
-          onTogglePlayback={playbackController.toggle}
-        />
         <div className="timeline-lower">
           <TimelineToolbar />
           <TimelineWorkspace
@@ -233,8 +236,15 @@ export function VeytrixEditor() {
           />
         </div>
       </div>
+      <MobileToolDock
+        onMediaSelected={handleMediaSelected}
+        onAddText={text.add}
+        videoAssets={videoAssets}
+        onAddVideo={addVideoToTimeline}
+      />
     </main>
   );
 }
 
 export default VeytrixEditor;
+

@@ -15,8 +15,22 @@ const createTextElement = (): TextElement => ({
   duration: 3,
 });
 
+const defaultTextElement: TextElement = {
+  id: "text-sample-clip",
+  content: "Summer Adventure",
+  fontSize: 36,
+  color: "#ffffff",
+  bold: true,
+  italic: false,
+  alignment: "center",
+  x: 50,
+  y: 40,
+  start: 0.5,
+  duration: 4.0,
+};
+
 export function useTextElements() {
-  const [elements, setElements] = useState<TextElement[]>([]);
+  const [elements, setElements] = useState<TextElement[]>([defaultTextElement]);
   const [selectedId, setSelectedId] = useState<string>();
 
   const add = () => {

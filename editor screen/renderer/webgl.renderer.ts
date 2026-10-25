@@ -1,6 +1,7 @@
 import {
   createShaderProgram,
   layerVertexShaderSource,
+  transitionVertexShaderSource,
   layerFragmentShaderSource,
   transitionFragmentShaderSource,
 } from "./webgl.shaders";
@@ -51,10 +52,13 @@ export class WebGLRenderer {
   private initContext(): boolean {
     const gl =
       this.canvas.getContext("webgl", {
-        alpha: true,
+        alpha: false,
         premultipliedAlpha: false,
+        preserveDrawingBuffer: true,
       }) ||
-      (this.canvas.getContext("experimental-webgl") as WebGLRenderingContext | null);
+      (this.canvas.getContext("experimental-webgl", {
+        preserveDrawingBuffer: true,
+      }) as WebGLRenderingContext | null);
 
     if (!gl) {
       console.warn("WebGL not supported");
@@ -77,8 +81,8 @@ export class WebGLRenderer {
       this.layerImageLoc = gl.getUniformLocation(this.layerProgram, "u_image");
     }
 
-    // 2. Transition Program
-    this.transProgram = createShaderProgram(gl, layerVertexShaderSource, transitionFragmentShaderSource);
+    // 2. Transition Program (uses dedicated fullscreen quad vertex shader)
+    this.transProgram = createShaderProgram(gl, transitionVertexShaderSource, transitionFragmentShaderSource);
     if (this.transProgram) {
       this.transPosLoc = gl.getAttribLocation(this.transProgram, "a_position");
       this.transTexLoc = gl.getAttribLocation(this.transProgram, "a_texCoord");
@@ -147,12 +151,19 @@ export class WebGLRenderer {
 
     gl.useProgram(this.layerProgram);
 
+    if (source instanceof HTMLVideoElement) {
+      if (source.readyState < 2 || source.videoWidth === 0 || source.videoHeight === 0) {
+        return;
+      }
+    }
+
     // Upload texture
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.textureA);
     try {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
-    } catch {
+    } catch (err) {
+      console.warn("WebGL texImage2D error:", err);
       return;
     }
 
@@ -182,6 +193,25 @@ export class WebGLRenderer {
     const gl = this.gl;
     if (!gl || !this.transProgram || !this.textureA || !this.textureB) return;
 
+    const isVideoA = sourceA instanceof HTMLVideoElement;
+    const isVideoB = sourceB instanceof HTMLVideoElement;
+
+    const validA = !isVideoA || (sourceA.readyState >= 2 && sourceA.videoWidth > 0 && sourceA.videoHeight > 0);
+    const validB = !isVideoB || (sourceB.readyState >= 2 && sourceB.videoWidth > 0 && sourceB.videoHeight > 0);
+
+    // If one source is still buffering, fallback to the ready source rather than clearing to black
+    if (!validA && validB) {
+      this.renderLayer(sourceB);
+      return;
+    }
+    if (validA && !validB) {
+      this.renderLayer(sourceA);
+      return;
+    }
+    if (!validA && !validB) {
+      return;
+    }
+
     gl.useProgram(this.transProgram);
 
     // Texture A (from)
@@ -190,6 +220,7 @@ export class WebGLRenderer {
     try {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sourceA);
     } catch {
+      this.renderLayer(sourceB);
       return;
     }
     gl.uniform1i(this.transFromLoc, 0);
@@ -200,6 +231,7 @@ export class WebGLRenderer {
     try {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sourceB);
     } catch {
+      this.renderLayer(sourceA);
       return;
     }
     gl.uniform1i(this.transToLoc, 1);

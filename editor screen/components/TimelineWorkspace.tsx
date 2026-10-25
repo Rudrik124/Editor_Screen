@@ -1,13 +1,9 @@
-import { useEffect, useRef } from "react";
-import { rulerLabels } from "../data/editorMockData";
-import { LeftSideToolbar } from "../left-side toolbar";
+import { useEffect, useMemo, useRef } from "react";
 import { TimelineTrack } from "./TimelineTrack";
 import { TimelineClip, Track, VideoAsset } from "../types/editor.types";
 import { TextElement } from "../left-side toolbar/functionality/text/functionality/text.types";
 import { getTextPresentationWidth } from "../left-side toolbar/functionality/text/functionality/getTextPresentationWidth";
 import { useEditorStore } from "../store/editor.store";
-import { TrimProcessor } from "../plugins/trim";
-
 
 interface TimelineWorkspaceProps {
   assets: VideoAsset[];
@@ -29,7 +25,6 @@ export function TimelineWorkspace({
   textElements,
   selectedTextId,
   onSelectText,
-  onAddText,
   onResizeText,
 }: TimelineWorkspaceProps) {
   const storeTracks = useEditorStore((state) => state.tracks);
@@ -53,16 +48,35 @@ export function TimelineWorkspace({
     setDuration(hasVideo ? timelineDuration : 0);
   }, [hasVideo, timelineDuration, setDuration]);
 
+  // Generate dynamic ruler ticks spanning the actual duration
+  const rulerTicks = useMemo(() => {
+    const totalSecs = Math.max(10, Math.ceil(timelineDuration));
+    // Determine interval (1s if <= 20s, 2s if <= 60s, 5s otherwise)
+    const interval = totalSecs <= 20 ? 1 : totalSecs <= 60 ? 2 : 5;
+    const ticks: { time: number; label: string }[] = [];
+    for (let s = 0; s <= totalSecs; s += interval) {
+      const mins = Math.floor(s / 60);
+      const secs = s % 60;
+      ticks.push({
+        time: s,
+        label: `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`,
+      });
+    }
+    return ticks;
+  }, [timelineDuration]);
+
   // Handle timeline scrubber / seek on click
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const el = timelineMainRef.current;
     if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const clickX = e.clientX - rect.left - 44; // 44px ruler header offset
-    const availableWidth = rect.width - 60;
-    if (clickX >= 0 && availableWidth > 0) {
-      const clickTime = (clickX / availableWidth) * timelineDuration;
-      setCurrentTime(Math.max(0, Math.min(timelineDuration, clickTime)));
+    const trackContentEl = el.querySelector(".track-content") as HTMLElement | null;
+    if (!trackContentEl) return;
+    const contentRect = trackContentEl.getBoundingClientRect();
+    const clickX = e.clientX - contentRect.left;
+    if (contentRect.width > 0) {
+      const clickRatio = Math.max(0, Math.min(1, clickX / contentRect.width));
+      const clickTime = clickRatio * timelineDuration;
+      setCurrentTime(clickTime);
     }
   };
 
@@ -132,19 +146,28 @@ export function TimelineWorkspace({
 
   return (
     <div className="timeline-workspace">
-      <LeftSideToolbar onAddText={onAddText} />
       <div
         className="timeline-main"
         ref={timelineMainRef}
         onClick={handleTimelineClick}
       >
-        <div className="ruler">
-          <div className="ruler-spacer" />
-          {rulerLabels.map((label) => (
-            <span key={label}>{label}</span>
-          ))}
+        {/* Dynamic Timeline Ruler */}
+        <div className="timeline-ruler">
+          <div className="ruler-header-spacer" />
+          <div className="ruler-ticks-track">
+            {rulerTicks.map((tick) => (
+              <div
+                key={tick.time}
+                className="ruler-tick"
+                style={{ left: `${(tick.time / timelineDuration) * 100}%` }}
+              >
+                <span className="ruler-tick-time">{tick.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
+        {/* Tracks List */}
         {renderedTracks.map((track) => (
           <TimelineTrack
             key={track.id}
@@ -167,10 +190,11 @@ export function TimelineWorkspace({
           />
         ))}
 
+        {/* Playhead needle with diamond top */}
         <div
           className="playhead"
           style={{
-            left: `calc(44px + (100% - 60px) * ${playheadPct / 100})`,
+            left: `calc(var(--track-header-w) + (100% - var(--track-header-w) - var(--track-gap-r)) * ${playheadPct / 100})`,
           }}
         >
           <span />

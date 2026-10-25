@@ -1,3 +1,4 @@
+import { ArrowCounterClockwise, ArrowClockwise } from "@phosphor-icons/react";
 import { useUndoRedoState } from "./undo-redo.state";
 import { UndoRedoProcessor } from "./undo-redo.processor";
 
@@ -22,10 +23,7 @@ export function UndoRedoToolbarButtons() {
           justifyContent: "center",
         }}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M3 7v6h6" />
-          <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
-        </svg>
+        <ArrowCounterClockwise size={14} weight="bold" />
       </button>
       <button
         type="button"
@@ -43,10 +41,7 @@ export function UndoRedoToolbarButtons() {
           justifyContent: "center",
         }}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M21 7v6h-6" />
-          <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" />
-        </svg>
+        <ArrowClockwise size={14} weight="bold" />
       </button>
     </div>
   );

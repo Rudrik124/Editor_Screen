@@ -1,3 +1,4 @@
+import { Snowflake } from "@phosphor-icons/react";
 import { useFreezeState } from "./freeze.state";
 import { FreezeProcessor } from "./freeze.processor";
 
@@ -19,27 +20,12 @@ export function FreezeToolbarButton() {
       style={{
         opacity: canFreeze ? 1 : 0.4,
         cursor: canFreeze ? "pointer" : "not-allowed",
-        padding: "4px 6px",
-        display: "flex",
+        display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
       }}
     >
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="#e8eaed"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <rect x="3.5" y="4" width="17" height="16" rx="2.5" />
-        <path d="M8.5 4v16M15.5 4v16" />
-        <path d="M11 9v6M13 9v6" strokeWidth="2.2" />
-      </svg>
+      <Snowflake size={14} weight="regular" />
     </button>
   );
 }
