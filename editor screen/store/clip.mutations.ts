@@ -42,12 +42,17 @@ export function handleSplitClip(
   const outPoint = clip.outPoint ?? (inPoint + clip.duration);
   const baseDuration = clip.baseDuration ?? outPoint;
   const rawThumbnails = clip.rawThumbnails ?? clip.thumbnails;
+  const speed = clip.speed ?? 1.0;
+
+  const splitOffset = clip.isFrozen
+    ? inPoint
+    : inPoint + leftDuration * speed;
 
   const updatedLeftClip: ClipModel = {
     ...clip,
     duration: leftDuration,
     inPoint: inPoint,
-    outPoint: inPoint + leftDuration,
+    outPoint: splitOffset,
     baseDuration,
     rawThumbnails,
   };
@@ -57,7 +62,7 @@ export function handleSplitClip(
     id: newClipId,
     start: splitTime,
     duration: rightDuration,
-    inPoint: inPoint + leftDuration,
+    inPoint: splitOffset,
     outPoint: outPoint,
     baseDuration,
     rawThumbnails,

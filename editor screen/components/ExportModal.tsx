@@ -79,17 +79,19 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
       setJobStatus("PROCESSING");
 
       // Connect WebSocket for real-time progress events
+      const rawApi = (import.meta.env.VITE_API_URL as string | undefined) || "http://localhost:8000";
+      const apiBase = `${rawApi.replace(/\/+$/, "")}/api/v1`;
       let polling = true;
       const pollJob = async () => {
         try {
-          const res = await fetch(`http://localhost:8000/api/v1/render/jobs/${job.id}`);
+          const res = await fetch(`${apiBase}/render/jobs/${job.id}`);
           if (!res.ok) return;
           const current: RenderJobResponse = await res.json();
           setProgress(current.progress);
           setJobStatus(current.status);
           if (current.status === "COMPLETED") {
             polling = false;
-            setDownloadUrl(`http://localhost:8000/api/v1/render/jobs/${job.id}/download`);
+            setDownloadUrl(`${apiBase}/render/jobs/${job.id}/download`);
             setIsExporting(false);
           } else if (current.status === "FAILED") {
             polling = false;
@@ -115,7 +117,7 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
               window.clearInterval(pollingIntervalRef.current);
               pollingIntervalRef.current = null;
             }
-            setDownloadUrl(`http://localhost:8000/api/v1/render/jobs/${job.id}/download`);
+            setDownloadUrl(`${apiBase}/render/jobs/${job.id}/download`);
             setIsExporting(false);
           } else if (msg.status === "FAILED") {
             polling = false;

@@ -13,9 +13,10 @@ def get_supabase() -> Optional[Client]:
     if _supabase_client is not None:
         return _supabase_client
     
-    if settings.SUPABASE_URL and settings.SUPABASE_KEY:
+    supabase_key = settings.effective_supabase_key
+    if settings.SUPABASE_URL and supabase_key:
         try:
-            _supabase_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+            _supabase_client = create_client(settings.SUPABASE_URL, supabase_key)
             logger.info("Supabase client initialized successfully.")
             return _supabase_client
         except Exception as e:

@@ -218,13 +218,14 @@ export function handleFreezeClip(
   const outPoint = clip.outPoint ?? (inPoint + clip.duration);
   const baseDuration = clip.baseDuration ?? outPoint;
   const rawThumbnails = clip.rawThumbnails ?? clip.thumbnails;
-  const freezeOffset = inPoint + leftDuration;
+  const speed = clip.speed ?? 1.0;
+  const freezeOffset = inPoint + leftDuration * speed;
 
   const leftClip: ClipModel = {
     ...clip,
     duration: leftDuration,
     inPoint,
-    outPoint: inPoint + leftDuration,
+    outPoint: freezeOffset,
     baseDuration,
     rawThumbnails,
   };
@@ -257,6 +258,18 @@ export function handleFreezeClip(
   };
 
   const clipIndex = track.clipIds.indexOf(clipId);
+  const subsequentClipIds = track.clipIds.slice(clipIndex + 1);
+  const shiftedClips: Record<string, ClipModel> = {};
+  for (const id of subsequentClipIds) {
+    const c = state.clips[id];
+    if (c) {
+      shiftedClips[id] = {
+        ...c,
+        start: c.start + freezeDuration,
+      };
+    }
+  }
+
   const newClipIds = [...track.clipIds];
   newClipIds.splice(clipIndex + 1, 0, freezeClipId, rightClipId);
 
@@ -273,6 +286,8 @@ export function handleFreezeClip(
       rightClipId,
       originalClip: clip,
       trackId: track.id,
+      freezeDuration,
+      subsequentClipIds,
     },
     timestamp: Date.now(),
   };
@@ -281,12 +296,14 @@ export function handleFreezeClip(
     newState: {
       clips: {
         ...state.clips,
+        ...shiftedClips,
         [clipId]: leftClip,
         [freezeClipId]: freezeClip,
         [rightClipId]: rightClip,
       },
       tracks: updatedTracks,
       selectedClipId: freezeClipId,
+      duration: (state.duration || 0) + freezeDuration,
     },
     inverse,
   };
@@ -296,19 +313,38 @@ export function handleRestoreFreezeClips(
   state: TimelineStateSlice,
   command: EditorCommand
 ): { newState: Partial<TimelineStateSlice> } | null {
-  const { originalClipId, freezeClipId, rightClipId, originalClip, trackId } =
-    command.payload as {
-      originalClipId: string;
-      freezeClipId: string;
-      rightClipId: string;
-      originalClip: ClipModel;
-      trackId: string;
-    };
+  const {
+    originalClipId,
+    freezeClipId,
+    rightClipId,
+    originalClip,
+    trackId,
+    freezeDuration = 0,
+    subsequentClipIds = [],
+  } = command.payload as {
+    originalClipId: string;
+    freezeClipId: string;
+    rightClipId: string;
+    originalClip: ClipModel;
+    trackId: string;
+    freezeDuration?: number;
+    subsequentClipIds?: string[];
+  };
 
   const newClips = { ...state.clips };
   delete newClips[freezeClipId];
   delete newClips[rightClipId];
   newClips[originalClipId] = originalClip;
+
+  for (const id of subsequentClipIds) {
+    const c = newClips[id];
+    if (c) {
+      newClips[id] = {
+        ...c,
+        start: c.start - freezeDuration,
+      };
+    }
+  }
 
   const updatedTracks = state.tracks.map((t) => {
     if (t.id === trackId) {
@@ -327,6 +363,7 @@ export function handleRestoreFreezeClips(
       clips: newClips,
       tracks: updatedTracks,
       selectedClipId: originalClipId,
+      duration: Math.max(1.0, (state.duration || 0) - freezeDuration),
     },
   };
 }

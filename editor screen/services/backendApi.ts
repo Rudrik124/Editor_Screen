@@ -1,7 +1,8 @@
 import { ClipModel, TrackModel } from "../types/editor.types";
 
-const API_BASE = "http://localhost:8000/api/v1";
-const WS_BASE = "ws://localhost:8000/api/v1";
+const RAW_API_URL = (import.meta.env.VITE_API_URL as string | undefined) || "http://localhost:8000";
+const API_BASE = `${RAW_API_URL.replace(/\/+$/, "")}/api/v1`;
+const WS_BASE = `${RAW_API_URL.replace(/\/+$/, "").replace(/^http/, "ws")}/api/v1`;
 
 export interface UploadedAssetResponse {
   assetId: string;
@@ -59,7 +60,7 @@ export async function submitTimelineRender(
   clips: Record<string, ClipModel>,
   settings: ExportSettings
 ): Promise<RenderJobResponse> {
-  const clipList = Object.values(clips);
+  const clipList = Object.values(clips).sort((a, b) => a.start - b.start);
   const trackList = tracks.map((t) => ({
     id: t.id,
     label: t.label,

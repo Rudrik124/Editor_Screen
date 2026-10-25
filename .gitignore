@@ -15,6 +15,12 @@ node_modules
 venv/
 env/
 
+# Environment files
+.env
+.env.*
+*.env
+!.env.example
+
 # IDE
 .idea/
 .vscode/

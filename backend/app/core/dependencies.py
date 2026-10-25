@@ -13,7 +13,8 @@ def get_current_user_id(authorization: Optional[str] = Header(default=None)) -> 
         return "00000000-0000-0000-0000-000000000001"
 
     token = authorization.split(" ")[1]
-    if not settings.SUPABASE_JWT_SECRET:
+    jwt_secret = settings.effective_jwt_secret
+    if not jwt_secret:
         # If secret not set in .env, decode unverified sub for development
         try:
             unverified_claims = jwt.get_unverified_claims(token)
@@ -24,7 +25,7 @@ def get_current_user_id(authorization: Optional[str] = Header(default=None)) -> 
     try:
         payload = jwt.decode(
             token,
-            settings.SUPABASE_JWT_SECRET,
+            jwt_secret,
             algorithms=["HS256"],
             audience="authenticated"
         )

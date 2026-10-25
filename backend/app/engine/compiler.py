@@ -62,11 +62,14 @@ class TimelineCompiler:
             }
         ))
 
-        # 2. Process Clips
+        # 2. Process Clips (sorted by track layer order and start time)
+        track_order = {t.id: idx for idx, t in enumerate(request.tracks)}
+        sorted_clips = sorted(request.clips, key=lambda c: (track_order.get(c.trackId, 0), c.start))
+
         video_overlay_streams: List[Tuple[ClipSchema, FilterStream]] = []
         audio_streams: List[FilterStream] = []
 
-        for clip in request.clips:
+        for clip in sorted_clips:
             # Resolve media file
             media_path = self._resolve_media_path(clip.mediaUrl)
             input_idx = context.register_input_file(media_path) if media_path else None
@@ -135,8 +138,8 @@ class TimelineCompiler:
                 stream = self.text_plugin.transform_clip_video(context, clip, stream)
                 video_overlay_streams.append((clip, stream))
 
-            # Process Audio Stream
-            if clip.type in ("video", "audio", "music") and input_idx is not None:
+            # Process Audio Stream (exclude frozen clips as freeze frames have no audio)
+            if clip.type in ("video", "audio", "music") and input_idx is not None and not clip.isFrozen:
                 raw_a = context.generate_label("a_raw")
                 context.add_node(FilterNode(
                     filter_name="aformat",

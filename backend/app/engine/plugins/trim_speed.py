@@ -17,6 +17,58 @@ class TrimSpeedPlugin(BasePipelinePlugin):
     ) -> FilterStream:
         current_label = in_stream.name
 
+        # Freeze frame handling: extract single frame at freezeTime, loop for clip duration
+        if clip.isFrozen:
+            freeze_time = clip.freezeTime if clip.freezeTime is not None else clip.inPoint
+            num_frames = max(1, int(round(clip.duration * context.fps)))
+
+            trim_label = context.generate_label("v_frz_trim")
+            context.add_node(FilterNode(
+                filter_name="trim",
+                inputs=[current_label],
+                outputs=[trim_label],
+                args={"start": str(freeze_time)}
+            ))
+            pts_norm_label = context.generate_label("v_frz_pts")
+            context.add_node(FilterNode(
+                filter_name="setpts",
+                inputs=[trim_label],
+                outputs=[pts_norm_label],
+                args={"expr": "PTS-STARTPTS"}
+            ))
+            loop_label = context.generate_label("v_frz_loop")
+            context.add_node(FilterNode(
+                filter_name="loop",
+                inputs=[pts_norm_label],
+                outputs=[loop_label],
+                args={"loop": str(num_frames), "size": "1", "start": "0"}
+            ))
+            fps_pts_label = context.generate_label("v_frz_fps_pts")
+            context.add_node(FilterNode(
+                filter_name="setpts",
+                inputs=[loop_label],
+                outputs=[fps_pts_label],
+                args={"expr": f"N/({context.fps}*TB)"}
+            ))
+            trim_dur_label = context.generate_label("v_frz_dur")
+            context.add_node(FilterNode(
+                filter_name="trim",
+                inputs=[fps_pts_label],
+                outputs=[trim_dur_label],
+                args={"duration": str(clip.duration)}
+            ))
+            current_label = trim_dur_label
+
+            offset_label = context.generate_label("v_pts_offset")
+            pts_expr = f"PTS-STARTPTS+({clip.start}/TB)" if clip.start > 0 else "PTS-STARTPTS"
+            context.add_node(FilterNode(
+                filter_name="setpts",
+                inputs=[current_label],
+                outputs=[offset_label],
+                args={"expr": pts_expr}
+            ))
+            return FilterStream(name=offset_label, stream_type="video", duration=clip.duration)
+
         # 1. Trimming (inPoint / outPoint)
         if clip.inPoint > 0 or (clip.outPoint is not None and clip.outPoint > clip.inPoint):
             out_label = context.generate_label("v_trim")
@@ -62,7 +114,7 @@ class TrimSpeedPlugin(BasePipelinePlugin):
             ))
             current_label = speed_label
 
-        # 4. Freeze frame
+        # 4. Freeze frame fallback (if not handled above)
         if clip.isFrozen:
             freeze_label = context.generate_label("v_freeze")
             freeze_dur = clip.duration
@@ -94,6 +146,9 @@ class TrimSpeedPlugin(BasePipelinePlugin):
         in_stream: FilterStream
     ) -> FilterStream:
         current_label = in_stream.name
+
+        if clip.isFrozen:
+            return in_stream
 
         # 1. Audio Trimming
         if clip.inPoint > 0 or (clip.outPoint is not None and clip.outPoint > clip.inPoint):

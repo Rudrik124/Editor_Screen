@@ -1,4 +1,12 @@
 import logging
+import sys
+from pathlib import Path
+
+# Ensure backend root directory is in sys.path
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,7 +41,7 @@ app = FastAPI(
 # CORS Middleware for modern web frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -56,3 +64,11 @@ async def root():
         "docs": "/docs",
         "health": f"{settings.API_V1_STR}/health"
     }
+
+if __name__ == "__main__":
+    import asyncio
+    import uvicorn
+    if hasattr(asyncio, "WindowsProactorEventLoopPolicy"):
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+
