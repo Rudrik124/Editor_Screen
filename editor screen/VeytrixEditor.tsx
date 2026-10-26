@@ -16,6 +16,7 @@ import { useTextElements } from "./left-side toolbar/functionality/text/function
 import { useEditorStore } from "./store/editor.store";
 import { useEditorKeyboardShortcuts } from "./hooks/useEditorKeyboardShortcuts";
 import { uploadAsset } from "./services/backendApi";
+import { isImageMedia } from "./components/utils/previewResolver";
 
 export function VeytrixEditor() {
   // Bind global keyboard shortcuts (Ctrl+Z, Ctrl+Shift+Z, S, Del, Space)
@@ -67,7 +68,12 @@ export function VeytrixEditor() {
     if (selectedClipId && clips[selectedClipId]) {
       const clip = clips[selectedClipId];
       if (clip.mediaUrl) {
-        setMedia({ url: clip.mediaUrl, type: "video", name: clip.name });
+        const isImage = clip.mediaType === "image" || isImageMedia(clip.mediaUrl, clip.name);
+        setMedia({
+          url: clip.mediaUrl,
+          type: isImage ? "image" : "video",
+          name: clip.name,
+        });
       }
     }
   }, [selectedClipId, clips]);
@@ -86,14 +92,17 @@ export function VeytrixEditor() {
       0
     );
 
+    const isImage = asset.mediaType === "image" || isImageMedia(asset.url, asset.name);
+
     const newClip: ClipModel = {
-      id: `video-${asset.id}`,
+      id: `${isImage ? "image" : "video"}-${asset.id}`,
       trackId: "video",
       name: `${asset.name}  ${asset.duration.toFixed(2)}`,
       type: "video",
+      mediaType: isImage ? "image" : "video",
       start,
       duration: asset.duration,
-      color: "#22262b",
+      color: isImage ? "#1e293b" : "#22262b",
       thumbnails: asset.thumbnails,
       rawThumbnails: asset.thumbnails,
       mediaUrl: asset.url,
@@ -123,10 +132,17 @@ export function VeytrixEditor() {
     if (file.type.startsWith("video/")) {
       try {
         const asset = await createVideoAsset(file);
-        const uploaded = await uploadAsset(file);
-        const assetWithRenderUrl = {
+        let renderUrl: string | undefined = undefined;
+        try {
+          const uploaded = await uploadAsset(file);
+          renderUrl = uploaded.mediaUrl;
+        } catch (uploadErr) {
+          console.warn("Backend video upload deferred:", uploadErr);
+        }
+        const assetWithRenderUrl: VideoAsset = {
           ...asset,
-          renderUrl: uploaded.mediaUrl,
+          renderUrl: renderUrl || asset.url,
+          mediaType: "video",
         };
         setVideoAssets((current) => [...current, assetWithRenderUrl]);
         setAddedVideoIds((current) =>
@@ -149,6 +165,49 @@ export function VeytrixEditor() {
       return;
     }
 
+    if (file.type.startsWith("image/")) {
+      try {
+        const objectUrl = URL.createObjectURL(file);
+        let renderUrl: string | undefined = undefined;
+        try {
+          const uploaded = await uploadAsset(file);
+          renderUrl = uploaded.mediaUrl;
+        } catch (uploadErr) {
+          console.warn("Backend image upload deferred:", uploadErr);
+        }
+
+        const imageAsset: VideoAsset = {
+          id: `image-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          url: objectUrl,
+          renderUrl: renderUrl || objectUrl,
+          name: file.name,
+          duration: 4.0,
+          thumbnailUrl: objectUrl,
+          thumbnails: [objectUrl],
+          mediaType: "image",
+        };
+
+        setVideoAssets((current) => [...current, imageAsset]);
+        setAddedVideoIds((current) =>
+          current.includes(imageAsset.id)
+            ? current
+            : [...current, imageAsset.id]
+        );
+        addAssetClipToStore(imageAsset);
+        setMedia({
+          url: imageAsset.url,
+          type: "image",
+          name: imageAsset.name,
+        });
+      } catch (error) {
+        console.error("Unable to import uploaded image.", error);
+        setUploadError(
+          error instanceof Error ? error.message : "Unable to import this image."
+        );
+      }
+      return;
+    }
+
     if (media && !videoAssets.some((asset) => asset.url === media.url)) {
       URL.revokeObjectURL(media.url);
     }
@@ -164,7 +223,12 @@ export function VeytrixEditor() {
       current.includes(asset.id) ? current : [...current, asset.id]
     );
     addAssetClipToStore(asset);
-    setMedia({ url: asset.url, type: "video", name: asset.name });
+    const isImage = asset.mediaType === "image" || isImageMedia(asset.url, asset.name);
+    setMedia({
+      url: asset.url,
+      type: isImage ? "image" : "video",
+      name: asset.name,
+    });
   };
 
   const selectText = (id: string) => {

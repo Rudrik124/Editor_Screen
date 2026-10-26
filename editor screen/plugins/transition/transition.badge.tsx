@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ClipModel } from "../../types/editor.types";
 import { TransitionModal } from "./transition.ui";
+import { useEditorStore } from "../../store/editor.store";
 
 interface TransitionBadgeProps {
   clip: ClipModel;
@@ -9,17 +10,32 @@ interface TransitionBadgeProps {
 
 export function TransitionBadge({ clip, timelineDuration }: TransitionBadgeProps) {
   const [modalOpen, setModalOpen] = useState(false);
+  const tracks = useEditorStore((state) => state.tracks);
+  const clips = useEditorStore((state) => state.clips);
+
+  const track = tracks.find((t) => t.id === clip.trackId || t.clipIds.includes(clip.id));
+  const clipIndex = track ? track.clipIds.indexOf(clip.id) : -1;
+  const isLastClip = track ? clipIndex === track.clipIds.length - 1 : false;
+
+  const nextClipId = track && clipIndex >= 0 && clipIndex < track.clipIds.length - 1 ? track.clipIds[clipIndex + 1] : null;
+  const nextClip = nextClipId ? clips[nextClipId] : null;
+
+  const currentTransition = clip.transition || nextClip?.transition;
+  const hasTransition = Boolean(currentTransition);
+
+  // If this clip is the last clip on the track with no subsequent clip to transition into, hide badge
+  if (isLastClip && !hasTransition) {
+    return null;
+  }
 
   // Position at the right edge (end) of the clip
   const endPositionPercent = ((clip.start + clip.duration) / timelineDuration) * 100;
-
-  const hasTransition = Boolean(clip.transition);
 
   return (
     <>
       <button
         type="button"
-        title={hasTransition ? `Transition: ${clip.transition?.type}` : "Add Transition"}
+        title={hasTransition ? `Transition: ${currentTransition?.type}` : "Add Transition"}
         onClick={(e) => {
           e.stopPropagation();
           setModalOpen(true);
@@ -58,7 +74,7 @@ export function TransitionBadge({ clip, timelineDuration }: TransitionBadgeProps
       <TransitionModal
         clipId={clip.id}
         isOpen={modalOpen}
-        currentTransition={clip.transition}
+        currentTransition={currentTransition}
         onClose={() => setModalOpen(false)}
       />
     </>

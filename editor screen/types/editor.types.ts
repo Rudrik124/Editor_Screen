@@ -32,6 +32,7 @@ export interface TimelineClip {
   id: string;
   label: string;
   type: "music" | "text" | "video" | "audio";
+  mediaType?: "video" | "image" | "audio";
   start: number;
   duration: number;
   color: string;
@@ -59,6 +60,7 @@ export interface VideoAsset {
   duration: number;
   thumbnailUrl: string;
   thumbnails: string[];
+  mediaType?: "video" | "image" | "audio";
 }
 
 export type AspectRatio = "16:9" | "9:16" | "1:1" | "4:5" | "21:9";
@@ -120,6 +122,7 @@ export interface ClipModel {
   trackId: string;
   name: string;
   type: "video" | "audio" | "text" | "music";
+  mediaType?: "video" | "image" | "audio";
   start: number;
   duration: number;
   inPoint?: number;

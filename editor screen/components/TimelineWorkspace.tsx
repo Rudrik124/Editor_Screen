@@ -40,13 +40,15 @@ export function TimelineWorkspace({
   const videoClipEnds = Object.values(storeClips)
     .filter((clip) => clip.type === "video")
     .map((clip) => clip.start + clip.duration);
+  const clipEnds = Object.values(storeClips).map((clip) => clip.start + clip.duration);
   const hasVideo = videoClipEnds.length > 0;
+  const hasClips = clipEnds.length > 0;
   const videoDuration = Math.max(...videoClipEnds, 0);
-  const timelineDuration = Math.max(9.66, ...videoClipEnds, 0);
+  const timelineDuration = Math.max(9.66, ...clipEnds, 0);
 
   useEffect(() => {
-    setDuration(hasVideo ? timelineDuration : 0);
-  }, [hasVideo, timelineDuration, setDuration]);
+    setDuration(hasClips ? timelineDuration : 0);
+  }, [hasClips, timelineDuration, setDuration]);
 
   // Generate dynamic ruler ticks spanning the actual duration
   const rulerTicks = useMemo(() => {

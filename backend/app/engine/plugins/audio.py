@@ -18,8 +18,25 @@ class AudioPlugin(BasePipelinePlugin):
     ) -> FilterStream:
         current_label = in_stream.name
 
-        # 1. Volume scaling
-        if abs(clip.volume - 1.0) > 0.01:
+        # 1. Volume scaling and volume keyframes
+        vol_kfs = [k for k in clip.keyframes if k.property == "volume"] if clip.keyframes else []
+        if vol_kfs:
+            sorted_vol = sorted(vol_kfs, key=lambda k: k.timeOffset)
+            expr_parts = []
+            for i in range(len(sorted_vol) - 1):
+                k1, k2 = sorted_vol[i], sorted_vol[i+1]
+                dt = max(0.001, k2.timeOffset - k1.timeOffset)
+                expr_parts.append(f"if(between(t,{k1.timeOffset},{k2.timeOffset}),{k1.value}+({k2.value}-{k1.value})*(t-{k1.timeOffset})/{dt}")
+            vol_expr = "".join(expr_parts) + f",{sorted_vol[-1].value}" + (")" * len(expr_parts))
+            out_label = context.generate_label("a_vol")
+            context.add_node(FilterNode(
+                filter_name="volume",
+                inputs=[current_label],
+                outputs=[out_label],
+                args={"volume": f"'{vol_expr}'", "eval": "frame"}
+            ))
+            current_label = out_label
+        elif abs(clip.volume - 1.0) > 0.01:
             out_label = context.generate_label("a_vol")
             context.add_node(FilterNode(
                 filter_name="volume",

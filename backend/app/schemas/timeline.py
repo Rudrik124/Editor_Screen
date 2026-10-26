@@ -3,7 +3,8 @@ from pydantic import BaseModel, Field
 
 class TransitionSchema(BaseModel):
     type: str = "fade"  # fade, wipeleft, wiperight, dissolve, slideup, slidedown, circlecrop
-    duration: float = Field(default=0.5, gt=0.0, le=5.0)
+    duration: float = Field(default=0.5, ge=0.0, le=5.0)
+    color: Optional[str] = None
 
 class FilterSchema(BaseModel):
     type: str  # brightness, contrast, saturation, vignette, grayscale, sepia, invert
@@ -23,7 +24,8 @@ class ClipSchema(BaseModel):
     id: str
     trackId: str
     name: str = "Untitled"
-    type: Literal["video", "audio", "text", "music"] = "video"
+    type: Literal["video", "audio", "text", "music", "image"] = "video"
+    mediaType: Optional[str] = None
     start: float = Field(default=0.0, ge=0.0)
     duration: float = Field(gt=0.0)
     inPoint: float = Field(default=0.0, ge=0.0)
@@ -56,7 +58,7 @@ class ClipSchema(BaseModel):
 class TrackSchema(BaseModel):
     id: str
     label: str
-    type: Literal["video", "audio", "text", "music"]
+    type: Literal["video", "audio", "text", "music", "image"]
     clipIds: List[str] = Field(default_factory=list)
     orderIndex: int = 0
     muted: bool = False
@@ -71,3 +73,4 @@ class TimelineExportRequest(BaseModel):
     width: int = Field(default=1920, ge=320, le=3840)
     height: int = Field(default=1080, ge=240, le=2160)
     quality: Literal["draft", "standard", "high"] = "standard"
+    coverUrl: Optional[str] = None

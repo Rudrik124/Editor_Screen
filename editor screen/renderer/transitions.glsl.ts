@@ -21,16 +21,26 @@ vec2 rotateUV(vec2 uv, float angle) {
   );
 }
 
-vec4 sampleBlur(sampler2D tex, vec2 uv, vec2 dir, float radius) {
-  vec4 color = texture2D(tex, clamp(uv, 0.0, 1.0)) * 0.28;
-  color += (texture2D(tex, clamp(uv - dir * radius * 0.4, 0.0, 1.0)) + texture2D(tex, clamp(uv + dir * radius * 0.4, 0.0, 1.0))) * 0.21;
-  color += (texture2D(tex, clamp(uv - dir * radius * 0.8, 0.0, 1.0)) + texture2D(tex, clamp(uv + dir * radius * 0.8, 0.0, 1.0))) * 0.11;
-  color += (texture2D(tex, clamp(uv - dir * radius * 1.2, 0.0, 1.0)) + texture2D(tex, clamp(uv + dir * radius * 1.2, 0.0, 1.0))) * 0.04;
+// Directional motion blur direct samplers (avoid sampler2D function arguments for WebGL 1.0 compatibility)
+vec4 sampleBlurFrom(vec2 uv, vec2 dir, float radius) {
+  vec4 color = getFromColor(uv) * 0.28;
+  color += (getFromColor(uv - dir * radius * 0.4) + getFromColor(uv + dir * radius * 0.4)) * 0.21;
+  color += (getFromColor(uv - dir * radius * 0.8) + getFromColor(uv + dir * radius * 0.8)) * 0.11;
+  color += (getFromColor(uv - dir * radius * 1.2) + getFromColor(uv + dir * radius * 1.2)) * 0.04;
   return color;
 }
 
-vec4 sampleGaussianBlur(sampler2D tex, vec2 uv, float radius) {
-  vec4 color = texture2D(tex, clamp(uv, 0.0, 1.0)) * 0.22;
+vec4 sampleBlurTo(vec2 uv, vec2 dir, float radius) {
+  vec4 color = getToColor(uv) * 0.28;
+  color += (getToColor(uv - dir * radius * 0.4) + getToColor(uv + dir * radius * 0.4)) * 0.21;
+  color += (getToColor(uv - dir * radius * 0.8) + getToColor(uv + dir * radius * 0.8)) * 0.11;
+  color += (getToColor(uv - dir * radius * 1.2) + getToColor(uv + dir * radius * 1.2)) * 0.04;
+  return color;
+}
+
+// Normalized 2D Gaussian blur samplers (weights sum to exactly 1.0)
+vec4 sampleGaussianBlurFrom(vec2 uv, float radius) {
+  vec4 color = getFromColor(uv) * 0.20;
   vec2 offH1 = vec2(radius * 0.45, 0.0);
   vec2 offH2 = vec2(radius * 0.95, 0.0);
   vec2 offV1 = vec2(0.0, radius * 0.45);
@@ -38,132 +48,158 @@ vec4 sampleGaussianBlur(sampler2D tex, vec2 uv, float radius) {
   vec2 offD1 = vec2(radius * 0.55, radius * 0.55);
   vec2 offD2 = vec2(-radius * 0.55, radius * 0.55);
 
-  color += (texture2D(tex, clamp(uv + offH1, 0.0, 1.0)) + texture2D(tex, clamp(uv - offH1, 0.0, 1.0))) * 0.15;
-  color += (texture2D(tex, clamp(uv + offH2, 0.0, 1.0)) + texture2D(tex, clamp(uv - offH2, 0.0, 1.0))) * 0.07;
-  color += (texture2D(tex, clamp(uv + offV1, 0.0, 1.0)) + texture2D(tex, clamp(uv - offV1, 0.0, 1.0))) * 0.15;
-  color += (texture2D(tex, clamp(uv + offV2, 0.0, 1.0)) + texture2D(tex, clamp(uv - offV2, 0.0, 1.0))) * 0.07;
-  color += (texture2D(tex, clamp(uv + offD1, 0.0, 1.0)) + texture2D(tex, clamp(uv - offD1, 0.0, 1.0))) * 0.05;
-  color += (texture2D(tex, clamp(uv + offD2, 0.0, 1.0)) + texture2D(tex, clamp(uv - offD2, 0.0, 1.0))) * 0.05;
+  color += (getFromColor(uv + offH1) + getFromColor(uv - offH1)) * 0.12;
+  color += (getFromColor(uv + offH2) + getFromColor(uv - offH2)) * 0.05;
+  color += (getFromColor(uv + offV1) + getFromColor(uv - offV1)) * 0.12;
+  color += (getFromColor(uv + offV2) + getFromColor(uv - offV2)) * 0.05;
+  color += (getFromColor(uv + offD1) + getFromColor(uv - offD1)) * 0.03;
+  color += (getFromColor(uv + offD2) + getFromColor(uv - offD2)) * 0.03;
+  return color;
+}
+
+vec4 sampleGaussianBlurTo(vec2 uv, float radius) {
+  vec4 color = getToColor(uv) * 0.20;
+  vec2 offH1 = vec2(radius * 0.45, 0.0);
+  vec2 offH2 = vec2(radius * 0.95, 0.0);
+  vec2 offV1 = vec2(0.0, radius * 0.45);
+  vec2 offV2 = vec2(0.0, radius * 0.95);
+  vec2 offD1 = vec2(radius * 0.55, radius * 0.55);
+  vec2 offD2 = vec2(-radius * 0.55, radius * 0.55);
+
+  color += (getToColor(uv + offH1) + getToColor(uv - offH1)) * 0.12;
+  color += (getToColor(uv + offH2) + getToColor(uv - offH2)) * 0.05;
+  color += (getToColor(uv + offV1) + getToColor(uv - offV1)) * 0.12;
+  color += (getToColor(uv + offV2) + getToColor(uv - offV2)) * 0.05;
+  color += (getToColor(uv + offD1) + getToColor(uv - offD1)) * 0.03;
+  color += (getToColor(uv + offD2) + getToColor(uv - offD2)) * 0.03;
   return color;
 }
 
 vec4 computeTransition(int type, vec2 uv, float p, vec3 dipColor) {
   float sp = smoothstep(0.0, 1.0, p);
 
-  // 1. Cross Dissolve
+  // 1. Cross Dissolve (type 0)
   if (type == 0) {
     return mix(getFromColor(uv), getToColor(uv), sp);
   }
-  // 2. Fade to Black
+  // 2. Fade to Black (type 1)
   if (type == 1) {
     vec4 black = vec4(0.0, 0.0, 0.0, 1.0);
     return p < 0.5 ? mix(getFromColor(uv), black, p * 2.0) : mix(black, getToColor(uv), (p - 0.5) * 2.0);
   }
-  // 3. Fade to White
+  // 3. Fade to White (type 2)
   if (type == 2) {
     vec4 white = vec4(1.0, 1.0, 1.0, 1.0);
     return p < 0.5 ? mix(getFromColor(uv), white, p * 2.0) : mix(white, getToColor(uv), (p - 0.5) * 2.0);
   }
-  // 4. Dip to Color
+  // 4. Dip to Color (type 3)
   if (type == 3) {
     vec4 c = vec4(dipColor, 1.0);
     return p < 0.5 ? mix(getFromColor(uv), c, p * 2.0) : mix(c, getToColor(uv), (p - 0.5) * 2.0);
   }
-  // 5. Instant Cut
+  // 5. Instant Cut (type 4)
   if (type == 4) {
     return p < 0.5 ? getFromColor(uv) : getToColor(uv);
   }
-  // 6. Camera Shake
+  // 6. Camera Shake (type 5)
   if (type == 5) {
-    float amp = sin(p * PI) * 0.05;
-    vec2 offset = vec2(sin(p * 50.0) * amp, cos(p * 40.0) * amp);
-    return mix(getFromColor(uv + offset), getToColor(uv - offset), p);
+    float amp = sin(p * PI) * 0.04;
+    vec2 offset = vec2(sin(p * 45.0) * amp, cos(p * 35.0) * amp);
+    return mix(getFromColor(uv + offset), getToColor(uv - offset), sp);
   }
-  // 7. Crash Zoom
+  // 7. Crash Zoom (type 6)
   if (type == 6) {
-    float scaleFrom = 1.0 + p * p * 3.5;
-    vec2 uvFrom = (uv - 0.5) / scaleFrom + 0.5;
-    float scaleTo = 0.5 + p * 0.5;
-    vec2 uvTo = (uv - 0.5) / scaleTo + 0.5;
-    return mix(getFromColor(uvFrom), getToColor(uvTo), smoothstep(0.3, 0.8, p));
+    float zFrom = 1.0 + pow(p, 2.0) * 2.5;
+    vec2 uvFrom = (uv - 0.5) / zFrom + 0.5;
+    float zTo = 1.0 + pow(1.0 - p, 2.0) * 1.5;
+    vec2 uvTo = (uv - 0.5) / zTo + 0.5;
+    return mix(getFromColor(uvFrom), getToColor(uvTo), smoothstep(0.3, 0.7, p));
   }
-  // 8. Whip Pan Left
+  // 8. Whip Pan Left (type 7)
   if (type == 7) {
-    float radius = sin(p * PI) * 0.04;
+    float radius = sin(p * PI) * 0.035;
     vec2 uvFrom = uv + vec2(p, 0.0);
     vec2 uvTo = uv - vec2(1.0 - p, 0.0);
-    vec4 colFrom = sampleBlur(u_from, uvFrom, vec2(1.0, 0.0), radius);
-    vec4 colTo = sampleBlur(u_to, uvTo, vec2(1.0, 0.0), radius);
-    return mix(colFrom, colTo, step(1.0, uvFrom.x));
+    vec4 colFrom = sampleBlurFrom(uvFrom, vec2(1.0, 0.0), radius);
+    vec4 colTo = sampleBlurTo(uvTo, vec2(1.0, 0.0), radius);
+    return uv.x < (1.0 - p) ? colFrom : colTo;
   }
-  // 9. Zoom In
+  // 9. Zoom In (type 8)
   if (type == 8) {
     float z = 1.0 + p * 0.6;
     vec2 uvFrom = (uv - 0.5) / z + 0.5;
     return mix(getFromColor(uvFrom), getToColor(uv), smoothstep(0.2, 0.8, p));
   }
-  // 10. Zoom Out
+  // 10. Zoom Out (type 9)
   if (type == 9) {
-    float z = 1.6 - p * 0.6;
+    float z = 1.0 + (1.0 - p) * 0.6;
     vec2 uvTo = (uv - 0.5) / z + 0.5;
     return mix(getFromColor(uv), getToColor(uvTo), smoothstep(0.2, 0.8, p));
   }
-  // 11. Hyper Zoom
+  // 11. Hyper Zoom (type 10)
   if (type == 10) {
-    float z = 1.0 + pow(p, 3.0) * 8.0;
+    float z = 1.0 + pow(p, 3.0) * 5.0;
     vec2 uvFrom = (uv - 0.5) / z + 0.5;
-    return mix(getFromColor(uvFrom), getToColor(uv), smoothstep(0.4, 0.9, p));
+    return mix(getFromColor(uvFrom), getToColor(uv), smoothstep(0.3, 0.85, p));
   }
-  // 12. Pulse Zoom
+  // 12. Pulse Zoom (type 11)
   if (type == 11) {
-    float pulse = 1.0 + sin(p * PI * 2.0) * 0.25;
+    float pulse = 1.0 + sin(p * PI) * 0.35;
     vec2 uvP = (uv - 0.5) / pulse + 0.5;
-    return mix(getFromColor(uvP), getToColor(uvP), p);
+    return mix(getFromColor(uvP), getToColor(uvP), sp);
   }
-  // 13. Slide Left
+  // 13. Slide Left (type 12)
   if (type == 12) {
     return uv.x < (1.0 - p) ? getFromColor(uv + vec2(p, 0.0)) : getToColor(uv - vec2(1.0 - p, 0.0));
   }
-  // 14. Slide Right
+  // 14. Slide Right (type 13)
   if (type == 13) {
     return uv.x > p ? getFromColor(uv - vec2(p, 0.0)) : getToColor(uv + vec2(1.0 - p, 0.0));
   }
-  // 15. Push Up
+  // 15. Push Up (type 14)
   if (type == 14) {
     return uv.y < (1.0 - p) ? getFromColor(uv + vec2(0.0, p)) : getToColor(uv - vec2(0.0, 1.0 - p));
   }
-  // 16. Perspective Push
+  // 16. Perspective Push (type 15)
   if (type == 15) {
-    float scale = 1.0 - 0.3 * sin(p * PI);
-    vec2 warpUV = (uv - 0.5) * scale + 0.5;
-    return warpUV.x < (1.0 - p) ? getFromColor(warpUV + vec2(p, 0.0)) : getToColor(warpUV - vec2(1.0 - p, 0.0));
+    float scale = 1.0 + sin(p * PI) * 0.15;
+    vec2 warpUV = (uv - 0.5) / scale + 0.5;
+    return uv.x < (1.0 - p) ? getFromColor(warpUV + vec2(p, 0.0)) : getToColor(warpUV - vec2(1.0 - p, 0.0));
   }
-  // 17. Spin Left
+  // 17. Spin Left (type 16) - Outgoing rotates counterclockwise, incoming resolves from rotated state to 0
   if (type == 16) {
-    vec2 rUV = rotateUV(uv, -p * PI);
-    return mix(getFromColor(rUV), getToColor(rUV), smoothstep(0.3, 0.7, p));
+    float angleFrom = -p * PI;
+    float angleTo = (1.0 - p) * PI;
+    float zoom = 1.0 + sin(p * PI) * 0.45;
+    vec2 uvFrom = rotateUV((uv - 0.5) / zoom + 0.5, angleFrom);
+    vec2 uvTo = rotateUV((uv - 0.5) / zoom + 0.5, angleTo);
+    return mix(getFromColor(uvFrom), getToColor(uvTo), smoothstep(0.3, 0.7, p));
   }
-  // 18. Spin Right
+  // 18. Spin Right (type 17) - Outgoing rotates clockwise, incoming resolves to 0 right-side up
   if (type == 17) {
-    vec2 rUV = rotateUV(uv, p * PI);
-    return mix(getFromColor(rUV), getToColor(rUV), smoothstep(0.3, 0.7, p));
+    float angleFrom = p * PI;
+    float angleTo = -(1.0 - p) * PI;
+    float zoom = 1.0 + sin(p * PI) * 0.45;
+    vec2 uvFrom = rotateUV((uv - 0.5) / zoom + 0.5, angleFrom);
+    vec2 uvTo = rotateUV((uv - 0.5) / zoom + 0.5, angleTo);
+    return mix(getFromColor(uvFrom), getToColor(uvTo), smoothstep(0.3, 0.7, p));
   }
-  // 19. Motion Blur
+  // 19. Motion Blur (type 18)
   if (type == 18) {
-    float blur = sin(p * PI) * 0.065;
-    vec4 fromB = sampleBlur(u_from, uv, vec2(0.7071, 0.7071), blur);
-    vec4 toB = sampleBlur(u_to, uv, vec2(0.7071, 0.7071), blur);
+    float blur = sin(p * PI) * 0.045;
+    vec4 fromB = sampleBlurFrom(uv, vec2(0.7071, 0.7071), blur);
+    vec4 toB = sampleBlurTo(uv, vec2(0.7071, 0.7071), blur);
     return mix(fromB, toB, sp);
   }
-  // 20. Gaussian Blur
+  // 20. Gaussian Blur (type 19)
   if (type == 19) {
-    float blur = sin(p * PI) * 0.045;
-    vec4 colFrom = sampleGaussianBlur(u_from, uv, blur);
-    vec4 colTo = sampleGaussianBlur(u_to, uv, blur);
+    float blur = sin(p * PI) * 0.04;
+    vec4 colFrom = sampleGaussianBlurFrom(uv, blur);
+    vec4 colTo = sampleGaussianBlurTo(uv, blur);
     return mix(colFrom, colTo, sp);
   }
 
-  // Fallback linear mix with smoothstep
+  // Fallback linear mix
   return mix(getFromColor(uv), getToColor(uv), sp);
 }
 `;

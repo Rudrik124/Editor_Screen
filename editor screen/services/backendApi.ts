@@ -33,6 +33,7 @@ export interface ExportSettings {
   quality: "draft" | "standard" | "high";
   resolution: { width: number; height: number };
   fps: number;
+  coverUrl?: string | null;
 }
 
 export interface RenderJobResponse {
@@ -96,7 +97,8 @@ export async function submitTimelineRender(
       transition: c.transition
         ? {
             type: c.transition.type,
-            duration: c.transition.duration,
+            duration: c.transition.duration !== undefined ? c.transition.duration : 0.5,
+            color: c.transition.color,
           }
         : undefined,
       keyframes: c.keyframes || [],
@@ -110,6 +112,7 @@ export async function submitTimelineRender(
     width: settings.resolution.width,
     height: settings.resolution.height,
     quality: settings.quality,
+    coverUrl: settings.coverUrl || undefined,
   };
 
   const response = await fetch(`${API_BASE}/render`, {

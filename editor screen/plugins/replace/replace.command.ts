@@ -3,6 +3,7 @@ import { EditorCommand } from "../../types/command.types";
 export interface ReplaceClipPayload {
   clipId: string;
   newMediaUrl: string;
+  newRenderMediaUrl?: string;
   newAssetId?: string;
   newName?: string;
   newDuration?: number;

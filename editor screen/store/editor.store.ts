@@ -116,8 +116,13 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
       newHistory.shift();
     }
 
+    const finalClips = result.newState.clips ?? state.clips;
+    const clipEnds = Object.values(finalClips).map((c) => c.start + c.duration);
+    const newDuration = Math.max(result.newState.duration ?? 0, ...clipEnds, 0);
+
     set({
       ...result.newState,
+      duration: newDuration,
       history: newHistory,
       future: [], // New command clears redo stack
     });
@@ -149,8 +154,13 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
 
     if (!result) return false;
 
+    const finalClips = result.newState.clips ?? state.clips;
+    const clipEnds = Object.values(finalClips).map((c) => c.start + c.duration);
+    const newDuration = Math.max(result.newState.duration ?? 0, ...clipEnds, 0);
+
     set({
       ...result.newState,
+      duration: newDuration,
       history: newHistory,
       future: [lastCommand, ...state.future],
     });
@@ -182,8 +192,13 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
       inverse: result.inverse || nextCommand.inverse,
     };
 
+    const finalClips = result.newState.clips ?? state.clips;
+    const clipEnds = Object.values(finalClips).map((c) => c.start + c.duration);
+    const newDuration = Math.max(result.newState.duration ?? 0, ...clipEnds, 0);
+
     set({
       ...result.newState,
+      duration: newDuration,
       history: [...state.history, commandWithInverse],
       future: newFuture,
     });

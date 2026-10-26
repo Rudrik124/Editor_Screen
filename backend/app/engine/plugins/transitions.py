@@ -12,25 +12,25 @@ TRANSITION_MAP = {
     "dip_to_color": "fadeblack",
     "instant_cut": "fade",
     # 2. Camera
-    "camera_shake": "fade",
+    "camera_shake": "fadefast",
     "crash_zoom": "zoomin",
-    "whip_pan_left": "slideleft",
+    "whip_pan_left": "smoothleft",
     # 3. Zoom
     "zoom_in": "zoomin",
     "zoom_out": "fade",
     "hyper_zoom": "zoomin",
-    "pulse_zoom": "fade",
+    "pulse_zoom": "fadefast",
     # 4. Slide / Push
     "slide_left": "slideleft",
     "slide_right": "slideright",
     "push_up": "slideup",
-    "perspective_push": "slideleft",
+    "perspective_push": "smoothleft",
     # 5. Spin / Rotate
-    "spin_left": "circlecrop",
-    "spin_right": "circlecrop",
+    "spin_left": "radial",
+    "spin_right": "radial",
     # 6. Blur / Motion
-    "motion_blur": "smoothleft",
-    "gaussian_blur": "dissolve",
+    "motion_blur": "hblur",
+    "gaussian_blur": "hblur",
 }
 
 class TransitionPlugin(BasePipelinePlugin):
@@ -58,20 +58,43 @@ class TransitionPlugin(BasePipelinePlugin):
         cumulative_duration = first_clip.duration
 
         for next_clip, next_stream in clip_stream_pairs[1:]:
-            # Check if previous clip defined a transition
-            trans = first_clip.transition or getattr(first_clip, "transition", None)
-            trans_type = "fade"
-            trans_dur = 0.5
-
-            if trans:
-                raw_type = trans.type if hasattr(trans, "type") else trans.get("type", "fade")
-                trans_type = TRANSITION_MAP.get(raw_type, "fade")
-                raw_dur = trans.duration if hasattr(trans, "duration") else trans.get("duration", 0.5)
-                # Clamp transition duration to not exceed clip durations
-                trans_dur = max(0.1, min(float(raw_dur), first_clip.duration * 0.9, next_clip.duration * 0.9))
-
-            # Normalize next stream PTS
+            # Check if either outgoing (first_clip) or incoming (next_clip) defined a transition
+            trans = (
+                first_clip.transition
+                or getattr(first_clip, "transition", None)
+                or next_clip.transition
+                or getattr(next_clip, "transition", None)
+            )
             norm_next_stream = self._normalize_stream_pts(context, next_stream)
+
+            raw_type = None
+            raw_dur = 0.5
+            if trans:
+                raw_type = trans.type if hasattr(trans, "type") else trans.get("type", None)
+                raw_dur = trans.duration if hasattr(trans, "duration") else trans.get("duration", 0.5)
+
+            if not trans or float(raw_dur) <= 0.001:
+                # Direct switch / Instant Cut with zero duration: clean concat filter
+                out_label = context.generate_label("v_cut")
+                context.add_node(FilterNode(
+                    filter_name="concat",
+                    inputs=[current_stream.name, norm_next_stream.name],
+                    outputs=[out_label],
+                    args={"n": "2", "v": "1", "a": "0"}
+                ))
+                cumulative_duration = round(cumulative_duration + next_clip.duration, 3)
+                current_stream = FilterStream(
+                    name=out_label,
+                    stream_type="video",
+                    duration=cumulative_duration
+                )
+                first_clip = next_clip
+                continue
+
+            trans_type = TRANSITION_MAP.get(raw_type, "fade")
+            raw_dur = trans.duration if hasattr(trans, "duration") else trans.get("duration", 0.5)
+            # Clamp transition duration to not exceed clip durations
+            trans_dur = max(0.05, min(float(raw_dur), first_clip.duration * 0.9, next_clip.duration * 0.9))
 
             # Offset is where transition starts relative to cumulative stream start
             offset = max(0.0, round(cumulative_duration - trans_dur, 3))

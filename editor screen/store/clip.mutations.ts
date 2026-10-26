@@ -55,6 +55,7 @@ export function handleSplitClip(
     outPoint: splitOffset,
     baseDuration,
     rawThumbnails,
+    transition: undefined,
   };
 
   const newRightClip: ClipModel = {
@@ -67,6 +68,7 @@ export function handleSplitClip(
     baseDuration,
     rawThumbnails,
     name: `${clip.name} (Part 2)`,
+    transition: clip.transition,
   };
 
   const clipIndex = track.clipIds.indexOf(clipId);
@@ -97,7 +99,7 @@ export function handleSplitClip(
         [newClipId]: newRightClip,
       },
       tracks: updatedTracks,
-      selectedClipId: newClipId,
+      selectedClipId: clipId,
     },
     inverse,
   };

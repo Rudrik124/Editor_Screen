@@ -322,9 +322,10 @@ export function handleReplaceClip(
   state: TimelineStateSlice,
   command: EditorCommand
 ): { newState: Partial<TimelineStateSlice>; inverse?: EditorCommand } | null {
-  const { clipId, newMediaUrl, newAssetId, newName, newDuration, newThumbnails } = command.payload as {
+  const { clipId, newMediaUrl, newRenderMediaUrl, newAssetId, newName, newDuration, newThumbnails } = command.payload as {
     clipId: string;
     newMediaUrl: string;
+    newRenderMediaUrl?: string;
     newAssetId?: string;
     newName?: string;
     newDuration?: number;
@@ -343,10 +344,14 @@ export function handleReplaceClip(
     thumbnails: clip.thumbnails,
   };
 
+  const resolvedRenderMediaUrl =
+    newRenderMediaUrl ??
+    (newMediaUrl.startsWith("blob:") ? clip.renderMediaUrl : newMediaUrl);
+
   const updatedClip: ClipModel = {
     ...clip,
     mediaUrl: newMediaUrl,
-    renderMediaUrl: newMediaUrl,
+    renderMediaUrl: resolvedRenderMediaUrl,
     assetId: newAssetId ?? clip.assetId,
     name: newName ?? clip.name,
     baseDuration: newDuration ?? clip.baseDuration,
@@ -359,6 +364,7 @@ export function handleReplaceClip(
     payload: {
       clipId,
       newMediaUrl: previous.mediaUrl || "",
+      newRenderMediaUrl: previous.renderMediaUrl,
       newAssetId: previous.assetId,
       newName: previous.name,
       newDuration: previous.baseDuration,

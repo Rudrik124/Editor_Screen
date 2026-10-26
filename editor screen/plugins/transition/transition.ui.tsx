@@ -38,7 +38,7 @@ export function TransitionModal({
   const handleApply = () => {
     TransitionProcessor.addTransition(clipId, {
       type: selectedType,
-      duration,
+      duration: selectedType === "instant_cut" ? 0.0 : duration,
       color: selectedType === "dip_to_color" ? dipColor : undefined,
     });
     onClose();
@@ -161,8 +161,10 @@ export function TransitionModal({
                 key={t.id}
                 onClick={() => {
                   setSelectedType(t.id);
-                  if (t.defaultDuration && duration === 0.5) {
-                    setDuration(t.defaultDuration);
+                  if (t.id === "instant_cut") {
+                    setDuration(0.0);
+                  } else if (duration <= 0.05 || (t.defaultDuration && duration === 0.5)) {
+                    setDuration(t.defaultDuration || 0.5);
                   }
                 }}
                 style={{
@@ -202,20 +204,29 @@ export function TransitionModal({
             gap: "12px",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <label style={{ fontSize: "12px", color: "#94a3b8" }}>
-              Duration: <strong style={{ color: "#f1f5f9" }}>{duration.toFixed(1)}s</strong>
-            </label>
-            <input
-              type="range"
-              min="0.1"
-              max="2.0"
-              step="0.1"
-              value={duration}
-              onChange={(e) => setDuration(parseFloat(e.target.value))}
-              style={{ width: "200px", accentColor: "#38bdf8" }}
-            />
-          </div>
+          {selectedType === "instant_cut" ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <label style={{ fontSize: "12px", color: "#94a3b8" }}>
+                Mode: <strong style={{ color: "#38bdf8" }}>Instant Hard Cut (0.0s)</strong>
+              </label>
+              <span style={{ fontSize: "11px", color: "#64748b" }}>Direct frame switch at cut</span>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <label style={{ fontSize: "12px", color: "#94a3b8" }}>
+                Duration: <strong style={{ color: "#f1f5f9" }}>{duration.toFixed(1)}s</strong>
+              </label>
+              <input
+                type="range"
+                min="0.1"
+                max="2.0"
+                step="0.1"
+                value={Math.max(0.1, duration)}
+                onChange={(e) => setDuration(parseFloat(e.target.value))}
+                style={{ width: "200px", accentColor: "#38bdf8" }}
+              />
+            </div>
+          )}
 
           {selectedType === "dip_to_color" && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>

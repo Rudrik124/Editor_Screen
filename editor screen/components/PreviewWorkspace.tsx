@@ -14,8 +14,10 @@ import { WebGLRenderer } from "../renderer/webgl.renderer";
 import { evaluateClipTransforms } from "../renderer/keyframe.interpolator";
 import { RatioProcessor, RatioSelector } from "../plugins/ratio";
 import { CoverModal } from "../plugins/cover";
+import { ClipModel } from "../types/editor.types";
 import {
   computeSourceTime,
+  isImageMedia,
   resolveActiveClips,
   syncVideoElement,
 } from "./utils/previewResolver";
@@ -36,6 +38,19 @@ const hiddenVideoStyle: React.CSSProperties = {
   zIndex: -100,
 };
 
+function parseHexColor(hex?: string): [number, number, number] {
+  if (!hex) return [0, 0, 0];
+  const cleaned = hex.replace("#", "");
+  if (cleaned.length === 6) {
+    return [
+      parseInt(cleaned.slice(0, 2), 16) / 255,
+      parseInt(cleaned.slice(2, 4), 16) / 255,
+      parseInt(cleaned.slice(4, 6), 16) / 255,
+    ];
+  }
+  return [0, 0, 0];
+}
+
 export function PreviewWorkspace({
   media,
   onPlaybackControllerReady,
@@ -45,6 +60,9 @@ export function PreviewWorkspace({
   const videoPrimaryRef = useRef<HTMLVideoElement>(null);
   const videoSecondaryRef = useRef<HTMLVideoElement>(null);
   const videoOverlayRef = useRef<HTMLVideoElement>(null);
+  const imagePrimaryRef = useRef<HTMLImageElement>(null);
+  const imageSecondaryRef = useRef<HTMLImageElement>(null);
+  const imageOverlayRef = useRef<HTMLImageElement>(null);
   const rendererRef = useRef<WebGLRenderer | null>(null);
 
   const [coverModalOpen, setCoverModalOpen] = useState(false);
@@ -58,14 +76,35 @@ export function PreviewWorkspace({
   const aspectRatio = useEditorStore((state) => state.aspectRatio);
 
   // 1. Resolve active clips
-  const { activeVideoClip, nextVideoClip, transitionInfo, activeOverlayClip } =
-    useMemo(
-      () => resolveActiveClips(storeTracks, storeClips, storeCurrentTime),
-      [storeTracks, storeClips, storeCurrentTime]
-    );
+  const {
+    activeVideoClip,
+    activeClipIndex,
+    nextVideoClip,
+    transitionInfo,
+    activeOverlayClip,
+    videoClips,
+  } = useMemo(
+    () => resolveActiveClips(storeTracks, storeClips, storeCurrentTime),
+    [storeTracks, storeClips, storeCurrentTime]
+  );
 
   const activeMediaUrl =
     activeVideoClip?.mediaUrl || activeOverlayClip?.mediaUrl || media?.url || null;
+
+  // Helper to retrieve loaded texture source for Slot A or Slot B
+  const getSlotSource = useCallback(
+    (slot: "A" | "B", clip: ClipModel | null): TexImageSource | null => {
+      if (!clip || !clip.mediaUrl) return null;
+      const isImg = clip.mediaType === "image" || isImageMedia(clip.mediaUrl, clip.name);
+      if (isImg) {
+        const img = slot === "A" ? imagePrimaryRef.current : imageSecondaryRef.current;
+        return img && img.complete && img.naturalWidth > 0 ? img : null;
+      }
+      const vid = slot === "A" ? videoPrimaryRef.current : videoSecondaryRef.current;
+      return vid && vid.readyState >= 2 ? vid : null;
+    },
+    []
+  );
 
   // 2. WebGL Paint Routine
   const renderFrame = useCallback(() => {
@@ -74,28 +113,81 @@ export function PreviewWorkspace({
 
     renderer.clear(0.04, 0.05, 0.07, 1.0);
 
-    const v1 = videoPrimaryRef.current;
-    const v2 = videoSecondaryRef.current;
-    const vo = videoOverlayRef.current;
+    // 2A. Render transition if active
+    if (transitionInfo && activeVideoClip && nextVideoClip) {
+      const outgoingSlot = activeClipIndex % 2 === 0 ? "A" : "B";
+      const incomingSlot = activeClipIndex % 2 === 0 ? "B" : "A";
+      const src1 = getSlotSource(outgoingSlot, activeVideoClip);
+      const src2 = getSlotSource(incomingSlot, nextVideoClip);
 
-    // Render primary layer or transition
-    if (transitionInfo && v1 && v2 && v1.readyState >= 2 && v2.readyState >= 2) {
-      renderer.renderTransition(v1, v2, transitionInfo.typeIndex, transitionInfo.progress);
-    } else if (v1 && v1.readyState >= 2) {
-      const local = activeVideoClip ? Math.max(0, storeCurrentTime - activeVideoClip.start) : 0;
-      const tf = activeVideoClip
-        ? evaluateClipTransforms(activeVideoClip, local)
-        : { scale: 1.0, opacity: 1.0, positionX: 0, positionY: 0, rotation: 0, volume: 1.0 };
-      renderer.renderLayer(v1, tf);
+      if (src1 && src2) {
+        const dipRgb = parseHexColor(transitionInfo.color);
+        renderer.renderTransition(
+          src1,
+          src2,
+          transitionInfo.typeIndex,
+          transitionInfo.progress,
+          dipRgb
+        );
+      } else if (src1) {
+        const local = Math.max(0, storeCurrentTime - activeVideoClip.start);
+        const tf = evaluateClipTransforms(activeVideoClip, local);
+        renderer.renderLayer(src1, tf);
+      } else if (src2) {
+        const local = Math.max(0, storeCurrentTime - nextVideoClip.start);
+        const tf = evaluateClipTransforms(nextVideoClip, local);
+        renderer.renderLayer(src2, tf);
+      }
+    } else if (activeVideoClip && activeClipIndex !== -1) {
+      // 2B. Normal single-layer playback: read active slot
+      const activeSlot = activeClipIndex % 2 === 0 ? "A" : "B";
+      let src = getSlotSource(activeSlot, activeVideoClip);
+
+      // Fallback: If active slot is still switching, check if other slot has this clip ready
+      if (!src) {
+        const otherSlot = activeSlot === "A" ? "B" : "A";
+        src = getSlotSource(otherSlot, activeVideoClip);
+      }
+
+      if (src) {
+        const local = Math.max(0, storeCurrentTime - activeVideoClip.start);
+        const tf = evaluateClipTransforms(activeVideoClip, local);
+        renderer.renderLayer(src, tf);
+      }
+    } else {
+      // In a gap or outside clips: background remains black
     }
 
-    // Render overlay (PIP) layer
-    if (vo && vo.readyState >= 2 && activeOverlayClip) {
-      const local = Math.max(0, storeCurrentTime - activeOverlayClip.start);
-      const tf = evaluateClipTransforms(activeOverlayClip, local);
-      renderer.renderLayer(vo, tf);
+    // 2C. Render overlay (PIP) layer
+    if (activeOverlayClip && activeOverlayClip.mediaUrl) {
+      const isOverlayImg =
+        activeOverlayClip.mediaType === "image" ||
+        isImageMedia(activeOverlayClip.mediaUrl, activeOverlayClip.name);
+      const vo = videoOverlayRef.current;
+      const imgo = imageOverlayRef.current;
+      const srcOverlay: TexImageSource | null = isOverlayImg
+        ? imgo && imgo.complete && imgo.naturalWidth > 0
+          ? imgo
+          : null
+        : vo && vo.readyState >= 2
+        ? vo
+        : null;
+
+      if (srcOverlay) {
+        const local = Math.max(0, storeCurrentTime - activeOverlayClip.start);
+        const tf = evaluateClipTransforms(activeOverlayClip, local);
+        renderer.renderLayer(srcOverlay, tf);
+      }
     }
-  }, [activeVideoClip, activeOverlayClip, transitionInfo, storeCurrentTime]);
+  }, [
+    activeVideoClip,
+    activeClipIndex,
+    nextVideoClip,
+    activeOverlayClip,
+    transitionInfo,
+    storeCurrentTime,
+    getSlotSource,
+  ]);
 
   // Callback ref to reliably bind WebGLRenderer whenever <canvas> is mounted in the DOM
   const initRenderer = useCallback(
@@ -133,7 +225,13 @@ export function PreviewWorkspace({
     };
   }, []);
 
-  // 3. Master timeline playback loop (rAF)
+  // Keep ref of renderFrame so playback loop does NOT re-initialize on every tick
+  const renderFrameRef = useRef(renderFrame);
+  useEffect(() => {
+    renderFrameRef.current = renderFrame;
+  }, [renderFrame]);
+
+  // 3. Master timeline playback loop (rAF) - Runs continuously without tearing down on each frame
   useEffect(() => {
     if (!isPlaying) {
       videoPrimaryRef.current?.pause();
@@ -147,19 +245,10 @@ export function PreviewWorkspace({
 
     const tick = (now: number) => {
       const state = useEditorStore.getState();
-      const v1 = videoPrimaryRef.current;
-      let nextTime: number;
-
-      if (v1 && !v1.paused && !v1.seeking && activeVideoClip && !activeVideoClip.isFrozen && !activeVideoClip.reverse) {
-        const inPoint = activeVideoClip.inPoint ?? 0;
-        const speed = activeVideoClip.speed ?? 1.0;
-        const local = Math.max(0, (v1.currentTime - inPoint) / speed);
-        nextTime = activeVideoClip.start + local;
-      } else {
-        const deltaSec = (now - lastTime) / 1000;
-        nextTime = state.currentTime + deltaSec;
-      }
+      const deltaSec = Math.min((now - lastTime) / 1000, 0.1);
       lastTime = now;
+
+      const nextTime = state.currentTime + deltaSec;
 
       if (nextTime >= state.duration) {
         state.setIsPlaying(false);
@@ -168,55 +257,129 @@ export function PreviewWorkspace({
       }
 
       state.setCurrentTime(nextTime);
-      renderFrame();
+      renderFrameRef.current();
       animId = requestAnimationFrame(tick);
     };
 
     animId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(animId);
-  }, [isPlaying, activeVideoClip, renderFrame]);
+  }, [isPlaying]);
 
-  // 4. Sync media elements & trigger render
+  // Helper to synchronize a slot (A or B) with its target clip
+  const syncSlot = useCallback(
+    (
+      clip: ClipModel | null,
+      video: HTMLVideoElement | null,
+      image: HTMLImageElement | null,
+      shouldPlay: boolean,
+      currentTime: number,
+      transStart?: number
+    ) => {
+      if (!clip || !clip.mediaUrl) {
+        if (video && !video.paused) video.pause();
+        return;
+      }
+
+      const isImg = clip.mediaType === "image" || isImageMedia(clip.mediaUrl, clip.name);
+      if (isImg) {
+        if (video && !video.paused) video.pause();
+        if (image && image.src !== clip.mediaUrl && !image.src.endsWith(clip.mediaUrl)) {
+          image.src = clip.mediaUrl;
+        }
+      } else {
+        const targetSourceTime = computeSourceTime(clip, currentTime, transStart);
+        syncVideoElement(video, clip.mediaUrl, targetSourceTime, shouldPlay, clip.speed ?? 1.0);
+      }
+    },
+    []
+  );
+
+  // 4. Ping-Pong Dual-Slot Synchronization: slot A (even) vs slot B (odd)
   useEffect(() => {
     const v1 = videoPrimaryRef.current;
     const v2 = videoSecondaryRef.current;
     const vo = videoOverlayRef.current;
+    const img1 = imagePrimaryRef.current;
+    const img2 = imageSecondaryRef.current;
+    const imgo = imageOverlayRef.current;
 
-    const primaryUrl = activeVideoClip?.mediaUrl || media?.url || null;
-    syncVideoElement(v1, primaryUrl, computeSourceTime(activeVideoClip, storeCurrentTime), isPlaying);
+    let clipForSlotA: ClipModel | null = null;
+    let clipForSlotB: ClipModel | null = null;
+    let isSlotAPlaying = false;
+    let isSlotBPlaying = false;
+    let transStartA: number | undefined;
+    let transStartB: number | undefined;
 
-    const transStart =
-      activeVideoClip?.transition && nextVideoClip
-        ? activeVideoClip.start +
-          activeVideoClip.duration -
-          (activeVideoClip.transition.duration || 0.5)
-        : undefined;
+    if (transitionInfo && activeVideoClip && nextVideoClip) {
+      // Transition in progress: both slots active and playing
+      if (activeClipIndex % 2 === 0) {
+        clipForSlotA = activeVideoClip;
+        clipForSlotB = nextVideoClip;
+        const trans = activeVideoClip.transition || nextVideoClip.transition;
+        const transDur = trans?.duration ?? 0.5;
+        transStartB = nextVideoClip.start - transDur;
+      } else {
+        clipForSlotB = activeVideoClip;
+        clipForSlotA = nextVideoClip;
+        const trans = activeVideoClip.transition || nextVideoClip.transition;
+        const transDur = trans?.duration ?? 0.5;
+        transStartA = nextVideoClip.start - transDur;
+      }
+      isSlotAPlaying = isPlaying;
+      isSlotBPlaying = isPlaying;
+    } else if (activeVideoClip && activeClipIndex !== -1) {
+      // Single clip active: active slot plays, other slot preloads next clip
+      if (activeClipIndex % 2 === 0) {
+        clipForSlotA = activeVideoClip;
+        isSlotAPlaying = isPlaying;
+        clipForSlotB = nextVideoClip;
+        isSlotBPlaying = false;
+      } else {
+        clipForSlotB = activeVideoClip;
+        isSlotBPlaying = isPlaying;
+        clipForSlotA = nextVideoClip;
+        isSlotAPlaying = false;
+      }
+    } else {
+      // In a gap or outside clips: preload upcoming clip
+      isSlotAPlaying = false;
+      isSlotBPlaying = false;
+      if (nextVideoClip) {
+        const nextIndex = videoClips.indexOf(nextVideoClip);
+        if (nextIndex % 2 === 0) {
+          clipForSlotA = nextVideoClip;
+        } else {
+          clipForSlotB = nextVideoClip;
+        }
+      }
+    }
 
-    const shouldPreloadV2 = Boolean(
-      (transitionInfo || (activeVideoClip?.transition && nextVideoClip)) && nextVideoClip?.mediaUrl
+    // Sync Slot A (v1 / img1)
+    syncSlot(clipForSlotA, v1, img1, isSlotAPlaying, storeCurrentTime, transStartA);
+
+    // Sync Slot B (v2 / img2)
+    syncSlot(clipForSlotB, v2, img2, isSlotBPlaying, storeCurrentTime, transStartB);
+
+    // Sync Overlay Slot (vo / imgo)
+    syncSlot(
+      activeOverlayClip,
+      vo,
+      imgo,
+      isPlaying && Boolean(activeOverlayClip),
+      storeCurrentTime
     );
-    if (shouldPreloadV2 && nextVideoClip?.mediaUrl) {
-      syncVideoElement(
-        v2,
-        nextVideoClip.mediaUrl,
-        computeSourceTime(nextVideoClip, storeCurrentTime, transStart),
-        isPlaying && Boolean(transitionInfo)
-      );
-    }
-
-    if (activeOverlayClip?.mediaUrl) {
-      syncVideoElement(vo, activeOverlayClip.mediaUrl, computeSourceTime(activeOverlayClip, storeCurrentTime), isPlaying);
-    }
 
     renderFrame();
   }, [
     storeCurrentTime,
     activeVideoClip,
+    activeClipIndex,
     nextVideoClip,
     transitionInfo,
     activeOverlayClip,
-    media?.url,
+    videoClips,
     isPlaying,
+    syncSlot,
     renderFrame,
   ]);
 
@@ -289,6 +452,27 @@ export function PreviewWorkspace({
               onSeeked={renderFrame}
               onTimeUpdate={renderFrame}
               onPlaying={renderFrame}
+            />
+            <img
+              ref={imagePrimaryRef}
+              alt=""
+              crossOrigin="anonymous"
+              style={hiddenVideoStyle}
+              onLoad={renderFrame}
+            />
+            <img
+              ref={imageSecondaryRef}
+              alt=""
+              crossOrigin="anonymous"
+              style={hiddenVideoStyle}
+              onLoad={renderFrame}
+            />
+            <img
+              ref={imageOverlayRef}
+              alt=""
+              crossOrigin="anonymous"
+              style={hiddenVideoStyle}
+              onLoad={renderFrame}
             />
 
             {/* Main WebGL canvas */}

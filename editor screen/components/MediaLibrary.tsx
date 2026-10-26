@@ -129,7 +129,7 @@ export function MediaLibrary({
           title="Video transitions"
         >
           <Sparkle size={15} />
-          <span>Effects</span>
+          <span>Transitions</span>
         </button>
         <button
           type="button"
