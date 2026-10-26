@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PencilSimple } from "@phosphor-icons/react";
 import { useRenameState } from "./rename.state";
 import { RenameProcessor } from "./rename.processor";
@@ -15,20 +15,38 @@ export function RenameModal({
   onClose: () => void;
 }) {
   const [name, setName] = useState(currentName);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setName(currentName);
+      setError(null);
+    }
+  }, [currentName, isOpen]);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (name.trim()) {
-      RenameProcessor.renameClip(clipId, name.trim());
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError("Enter a clip name.");
+      return;
     }
+
+    const renamed = RenameProcessor.renameClip(clipId, trimmedName);
+    if (!renamed) {
+      setError("Unable to rename this clip.");
+      return;
+    }
+
     onClose();
   };
 
   return (
     <div
       className="rename-modal-overlay"
+      data-toolbar-modal="true"
       style={{
         position: "fixed",
         inset: 0,
@@ -66,16 +84,30 @@ export function RenameModal({
           value={name}
           maxLength={100}
           autoFocus
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => {
+            setName(e.target.value);
+            if (error) setError(null);
+          }}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? "rename-clip-error" : undefined}
           style={{
             background: "#14171a",
-            border: "1px solid #3c444c",
+            border: `1px solid ${error ? "#f87171" : "#3c444c"}`,
             color: "#fff",
             padding: "6px 8px",
             borderRadius: "4px",
             fontSize: "12px",
           }}
         />
+        {error && (
+          <span
+            id="rename-clip-error"
+            role="alert"
+            style={{ color: "#f87171", fontSize: "11px" }}
+          >
+            {error}
+          </span>
+        )}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
           <button
             type="button"

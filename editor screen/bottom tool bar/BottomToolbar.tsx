@@ -10,15 +10,39 @@ import { LockToolbarButton } from "../plugins/lock";
 import { DeleteToolbarButton } from "../plugins/delete";
 
 export function BottomToolbar() {
+  const triggerToolbarAction = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (target.closest("[data-toolbar-modal]")) {
+      return;
+    }
+
+    if (
+      target !== event.currentTarget &&
+      !target.classList.contains("toolbar-item-label")
+    ) {
+      return;
+    }
+
+    event.currentTarget.querySelector<HTMLButtonElement>("button")?.click();
+  };
+
   return (
     <nav className="veytrix-bottom-toolbar" aria-label="Editing tools">
       {/* Group 1: Cut & Trim */}
       <div className="toolbar-cluster">
-        <div className="toolbar-item" title="Split clip at playhead (Hotkey: S)">
+        <div
+          className="toolbar-item"
+          title="Split clip at playhead (Hotkey: S)"
+          onClick={triggerToolbarAction}
+        >
           <SplitToolbarButton />
           <span className="toolbar-item-label">Split</span>
         </div>
-        <div className="toolbar-item" title="Trim clip edges to playhead">
+        <div
+          className="toolbar-item"
+          title="Trim clip edges to playhead"
+          onClick={triggerToolbarAction}
+        >
           <TrimToolbarButton />
           <span className="toolbar-item-label">Trim</span>
         </div>
@@ -28,15 +52,27 @@ export function BottomToolbar() {
 
       {/* Group 2: Time & Motion */}
       <div className="toolbar-cluster">
-        <div className="toolbar-item" title="Playback speed (0.25x - 4x)">
+        <div
+          className="toolbar-item"
+          title="Playback speed (0.25x - 4x)"
+          onClick={triggerToolbarAction}
+        >
           <SpeedToolbarButton />
           <span className="toolbar-item-label">Speed</span>
         </div>
-        <div className="toolbar-item" title="Reverse clip playback">
+        <div
+          className="toolbar-item"
+          title="Reverse clip playback"
+          onClick={triggerToolbarAction}
+        >
           <ReverseToolbarButton />
           <span className="toolbar-item-label">Reverse</span>
         </div>
-        <div className="toolbar-item" title="Freeze frame at playhead (+3s)">
+        <div
+          className="toolbar-item"
+          title="Freeze frame at playhead (+3s)"
+          onClick={triggerToolbarAction}
+        >
           <FreezeToolbarButton />
           <span className="toolbar-item-label">Freeze</span>
         </div>
@@ -46,19 +82,35 @@ export function BottomToolbar() {
 
       {/* Group 3: Clip Management */}
       <div className="toolbar-cluster">
-        <div className="toolbar-item" title="Duplicate clip (Hotkey: Ctrl+D)">
+        <div
+          className="toolbar-item"
+          title="Duplicate clip (Hotkey: Ctrl+D)"
+          onClick={triggerToolbarAction}
+        >
           <DuplicateToolbarButton />
           <span className="toolbar-item-label">Duplicate</span>
         </div>
-        <div className="toolbar-item" title="Rename clip">
+        <div
+          className="toolbar-item"
+          title="Rename clip"
+          onClick={triggerToolbarAction}
+        >
           <RenameToolbarButton />
           <span className="toolbar-item-label">Rename</span>
         </div>
-        <div className="toolbar-item" title="Lock / Unlock clip on timeline">
+        <div
+          className="toolbar-item"
+          title="Lock / Unlock clip on timeline"
+          onClick={triggerToolbarAction}
+        >
           <LockToolbarButton />
           <span className="toolbar-item-label">Lock</span>
         </div>
-        <div className="toolbar-item delete-item" title="Delete selected clip (Hotkey: Del)">
+        <div
+          className="toolbar-item delete-item"
+          title="Delete selected clip (Hotkey: Del)"
+          onClick={triggerToolbarAction}
+        >
           <DeleteToolbarButton />
           <span className="toolbar-item-label">Delete</span>
         </div>

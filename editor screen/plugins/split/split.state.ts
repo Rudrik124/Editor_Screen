@@ -1,8 +1,8 @@
 import { useEditorStore } from "../../store/editor.store";
-import { selectActiveClipAtCurrentTime } from "../../store/store.selectors";
+import { selectToolbarClip } from "../../store/store.selectors";
 
 export function useSplitState() {
-  const activeClip = useEditorStore(selectActiveClipAtCurrentTime);
+  const activeClip = useEditorStore(selectToolbarClip);
   const currentTime = useEditorStore((state) => state.currentTime);
 
   const canSplit = Boolean(
@@ -14,4 +14,3 @@ export function useSplitState() {
 
   return { selectedClip: activeClip, currentTime, canSplit };
 }
-

@@ -1,8 +1,8 @@
 import { useEditorStore } from "../../store/editor.store";
-import { selectActiveClipAtCurrentTime } from "../../store/store.selectors";
+import { selectToolbarClip } from "../../store/store.selectors";
 
 export function useFreezeState() {
-  const activeClip = useEditorStore(selectActiveClipAtCurrentTime);
+  const activeClip = useEditorStore(selectToolbarClip);
   const currentTime = useEditorStore((state) => state.currentTime);
 
   const canFreeze = Boolean(
@@ -14,4 +14,3 @@ export function useFreezeState() {
 
   return { selectedClip: activeClip, currentTime, canFreeze };
 }
-

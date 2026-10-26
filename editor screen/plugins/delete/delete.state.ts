@@ -1,8 +1,8 @@
 import { useEditorStore } from "../../store/editor.store";
-import { selectActiveClipAtCurrentTime } from "../../store/store.selectors";
+import { selectToolbarClip } from "../../store/store.selectors";
 
 export function useDeleteState() {
-  const activeClip = useEditorStore(selectActiveClipAtCurrentTime);
+  const activeClip = useEditorStore(selectToolbarClip);
   const canDelete = Boolean(activeClip && !activeClip.locked);
 
   return { selectedClip: activeClip, canDelete };

@@ -1,5 +1,5 @@
 import { useEditorStore } from "../../store/editor.store";
-import { selectActiveClipAtCurrentTime } from "../../store/store.selectors";
+import { selectToolbarClip } from "../../store/store.selectors";
 import { createTrimCommand } from "./trim.command";
 
 export const TrimProcessor = {
@@ -14,7 +14,7 @@ export const TrimProcessor = {
 
   trimSelectedClip: (edge: "left" | "right", newTime: number): boolean => {
     const state = useEditorStore.getState();
-    const clip = selectActiveClipAtCurrentTime(state);
+    const clip = selectToolbarClip(state);
     if (!clip || clip.locked) return false;
 
     return TrimProcessor.trimClip(clip.id, edge, newTime);

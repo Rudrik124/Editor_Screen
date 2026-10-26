@@ -1,11 +1,11 @@
 import { useEditorStore } from "../../store/editor.store";
-import { selectActiveClipAtCurrentTime } from "../../store/store.selectors";
+import { selectToolbarClip } from "../../store/store.selectors";
 import { createSplitCommand } from "./split.command";
 
 export const SplitProcessor = {
   splitAtCurrentTime: (): boolean => {
     const state = useEditorStore.getState();
-    const clip = selectActiveClipAtCurrentTime(state);
+    const clip = selectToolbarClip(state);
     if (!clip || clip.locked) return false;
 
     const splitTime = state.currentTime;

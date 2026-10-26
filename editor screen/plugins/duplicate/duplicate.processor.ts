@@ -1,11 +1,11 @@
 import { useEditorStore } from "../../store/editor.store";
-import { selectActiveClipAtCurrentTime } from "../../store/store.selectors";
+import { selectToolbarClip } from "../../store/store.selectors";
 import { createDuplicateCommand } from "./duplicate.command";
 
 export const DuplicateProcessor = {
   duplicateSelectedClip: (): boolean => {
     const state = useEditorStore.getState();
-    const clip = selectActiveClipAtCurrentTime(state);
+    const clip = selectToolbarClip(state);
     if (!clip) return false;
 
     const command = createDuplicateCommand(clip.id);

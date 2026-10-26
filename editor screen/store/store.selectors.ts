@@ -78,3 +78,9 @@ export const selectActiveClipAtCurrentTime = (
   // 3. Fallback to explicitly selected clip if any
   return selectSelectedClip(state);
 };
+
+export const selectToolbarClip = (
+  state: EditorStoreState
+): ClipModel | null => {
+  return selectSelectedClip(state) || selectActiveClipAtCurrentTime(state);
+};

@@ -1,5 +1,5 @@
 import { useEditorStore } from "../../store/editor.store";
-import { selectActiveClipAtCurrentTime } from "../../store/store.selectors";
+import { selectToolbarClip } from "../../store/store.selectors";
 import { createSetSpeedCommand } from "./speed.command";
 
 export const SpeedProcessor = {
@@ -14,7 +14,7 @@ export const SpeedProcessor = {
 
   setSelectedClipSpeed: (speed: number): boolean => {
     const state = useEditorStore.getState();
-    const clip = selectActiveClipAtCurrentTime(state);
+    const clip = selectToolbarClip(state);
     if (!clip) return false;
 
     return SpeedProcessor.setClipSpeed(clip.id, speed);

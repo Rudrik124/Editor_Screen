@@ -1,8 +1,8 @@
 import { useEditorStore } from "../../store/editor.store";
-import { selectActiveClipAtCurrentTime } from "../../store/store.selectors";
+import { selectToolbarClip } from "../../store/store.selectors";
 
 export function useReverseState() {
-  const activeClip = useEditorStore(selectActiveClipAtCurrentTime);
+  const activeClip = useEditorStore(selectToolbarClip);
   const isReversed = Boolean(activeClip?.reverse);
   const canReverse = Boolean(activeClip && !activeClip.locked);
 
