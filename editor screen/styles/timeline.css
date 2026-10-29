@@ -276,6 +276,44 @@
   max-width: calc(100% - 16px);
 }
 
+.timeline-clip-mute {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  z-index: 4;
+  display: flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  color: #fff;
+  background: rgba(15, 23, 42, 0.72);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.timeline-clip:hover .timeline-clip-mute,
+.timeline-clip-mute:focus-visible,
+.timeline-clip-mute.muted {
+  opacity: 1;
+}
+
+.timeline-clip-mute svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.timeline-clip-mute.muted {
+  color: #f87171;
+}
+
 .text-clip .clip-visual {
   background: linear-gradient(135deg, #065f46, #047857);
 }
@@ -298,19 +336,49 @@
 }
 
 .audio-clip .clip-visual {
-  background: repeating-linear-gradient(
-    90deg,
-    #1e293b 0 20px,
-    #334155 21px 23px
-  );
+  background: #1e293b;
 }
 
 .music-clip .clip-visual {
-  background: repeating-linear-gradient(
-    90deg,
-    #1e1b4b 0 20px,
-    #312e81 21px 23px
-  );
+  background: #1e1b4b;
+}
+
+.audio-waveform {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0.78;
+}
+
+.audio-waveform canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.audio-waveform-status {
+  position: absolute;
+  right: 24px;
+  bottom: 2px;
+  max-width: calc(100% - 32px);
+  overflow: hidden;
+  color: #cbd5e1;
+  font-size: 8px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px #0f172a;
+}
+
+.audio-waveform.error {
+  opacity: 0;
+}
+
+.audio-clip .clip-label,
+.music-clip .clip-label {
+  z-index: 2;
 }
 
 /* 5. RESIZE TRIM HANDLES */

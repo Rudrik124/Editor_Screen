@@ -1,6 +1,7 @@
 import { ClipModel } from "../types/editor.types";
 import { EditorCommand } from "../types/command.types";
 import { TimelineStateSlice } from "./clip.mutations";
+import { getAudioPlaybackRate, getAudioSourceRange } from "../utils/audioTimeline";
 
 export function handleTrimClip(
   state: TimelineStateSlice,
@@ -42,6 +43,7 @@ export function handleTrimClip(
       : undefined;
 
   const currentEnd = clip.start + clip.duration;
+  const isAudioClip = clip.type === "audio" || clip.type === "music";
 
   if (edge === "left") {
     const minStart = Math.max(0, newTime);
@@ -49,18 +51,33 @@ export function handleTrimClip(
     const delta = minStart - clip.start;
     newStart = minStart;
     newDuration = currentEnd - minStart;
-    newIn = Math.max(0, (clip.inPoint ?? 0) + delta * speed);
-    newOut = newIn + newDuration * speed;
+    if (isAudioClip) {
+      const sourceRange = getAudioSourceRange(clip);
+      newIn = Math.min(
+        sourceRange.end,
+        sourceRange.start + delta * getAudioPlaybackRate(clip)
+      );
+      newOut = clip.outPoint;
+    } else {
+      newIn = Math.max(0, (clip.inPoint ?? 0) + delta * speed);
+      newOut = newIn + newDuration * speed;
+    }
   } else {
     if (newTime <= clip.start + 0.1) return null; // Min 0.1s
     const requestedDuration = newTime - clip.start;
-    const maxDuration =
-      maxSourceOut === undefined
+    const maxDuration = isAudioClip
+      ? Math.max(
+          0,
+          (maxSourceOut ?? getAudioSourceRange(clip).end) - newIn
+        ) / 0.1
+      : maxSourceOut === undefined
         ? requestedDuration
         : Math.max(0, (maxSourceOut - newIn) / speed);
     newDuration = Math.min(requestedDuration, maxDuration);
     if (newDuration <= 0.1) return null;
-    newOut = newIn + newDuration * speed;
+    newOut = isAudioClip
+      ? Math.min(maxSourceOut ?? Number.POSITIVE_INFINITY, newIn + newDuration * speed)
+      : newIn + newDuration * speed;
   }
 
   const updatedClip: ClipModel = {

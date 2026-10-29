@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { AspectRatio, ClipModel, TrackModel } from "../types/editor.types";
 import { EditorCommand } from "../types/command.types";
 import { executeCommandMutation } from "./command.executor";
+import { DEFAULT_SAMPLE_MEDIA } from "../data/sampleMedia";
 
 // Phase 3: Layering, Transitions, Keyframes, Cover, Ratio, Replace enabled
 
@@ -11,6 +12,7 @@ export interface EditorStoreState {
   selectedClipId: string | null;
   selectedTrackId: string | null;
   currentTime: number;
+  seekRevision: number;
   duration: number;
   isPlaying: boolean;
   aspectRatio: AspectRatio;
@@ -25,7 +27,7 @@ export interface EditorStoreState {
   redo: () => boolean;
   selectClip: (clipId: string | null) => void;
   selectTrack: (trackId: string | null) => void;
-  setCurrentTime: (time: number) => void;
+  setCurrentTime: (time: number, isSeek?: boolean) => void;
   setDuration: (duration: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
   setAspectRatio: (aspectRatio: AspectRatio) => void;
@@ -40,7 +42,7 @@ const defaultTracks: TrackModel[] = [
   { id: "text", label: "Text", type: "text", clipIds: ["text-sample-clip"] },
   { id: "overlay-clip", label: "Overlay", type: "video", clipIds: [] },
   { id: "video", label: "Video", type: "video", clipIds: ["video-sample-clip"] },
-  { id: "audio", label: "Audio Track", type: "audio", clipIds: ["audio-sample-clip"] },
+  { id: "audio", label: "Audio Track", type: "audio", clipIds: ["audio-sample-clip"], muted: false },
 ];
 
 const defaultClips: Record<string, ClipModel> = {
@@ -56,13 +58,13 @@ const defaultClips: Record<string, ClipModel> = {
   "video-sample-clip": {
     id: "video-sample-clip",
     trackId: "video",
-    name: "Nature Drone Footage",
+    name: "Flower Sample",
     type: "video",
     start: 0,
     duration: 9.66,
     color: "#1e293b",
-    mediaUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-    renderMediaUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    mediaUrl: DEFAULT_SAMPLE_MEDIA.url,
+    renderMediaUrl: DEFAULT_SAMPLE_MEDIA.url,
   },
   "audio-sample-clip": {
     id: "audio-sample-clip",
@@ -72,6 +74,8 @@ const defaultClips: Record<string, ClipModel> = {
     start: 0,
     duration: 9.66,
     color: "#1e3a8a",
+    volume: 1,
+    muted: false,
   },
 };
 
@@ -81,6 +85,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
   selectedClipId: null,
   selectedTrackId: null,
   currentTime: 0,
+  seekRevision: 0,
   duration: 9.66,
   isPlaying: false,
   aspectRatio: "16:9",
@@ -208,7 +213,11 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
 
   selectClip: (clipId) => set({ selectedClipId: clipId }),
   selectTrack: (trackId) => set({ selectedTrackId: trackId }),
-  setCurrentTime: (currentTime) => set({ currentTime }),
+  setCurrentTime: (currentTime, isSeek = true) =>
+    set((state) => ({
+      currentTime,
+      seekRevision: state.seekRevision + (isSeek ? 1 : 0),
+    })),
   setDuration: (duration) => set({ duration }),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
   setTracksAndClips: (tracks, clips) => set({ tracks, clips }),

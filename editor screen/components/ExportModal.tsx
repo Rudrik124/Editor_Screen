@@ -8,6 +8,7 @@ import {
   RenderJobResponse,
 } from "../services/backendApi";
 import { RatioProcessor } from "../plugins/ratio/ratio.processor";
+import { getExportResolution } from "../utils/exportResolution";
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -61,24 +62,9 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
     const state = useEditorStore.getState();
     const baseDims = RatioProcessor.getDimensions(state.aspectRatio);
 
-    const resolutionMap = {
-      draft: {
-        width: Math.max(320, Math.round((baseDims.width * 0.667) / 2) * 2),
-        height: Math.max(240, Math.round((baseDims.height * 0.667) / 2) * 2),
-      },
-      standard: {
-        width: baseDims.width,
-        height: baseDims.height,
-      },
-      high: {
-        width: Math.round((baseDims.width * 1.5) / 2) * 2,
-        height: Math.round((baseDims.height * 1.5) / 2) * 2,
-      },
-    };
-
     const settings: ExportSettings = {
       quality,
-      resolution: resolutionMap[quality],
+      resolution: getExportResolution(baseDims, quality),
       fps,
       coverUrl: state.coverUrl || undefined,
     };

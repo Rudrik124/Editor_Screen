@@ -24,7 +24,12 @@ export type CommandType =
   | "UPDATE_KEYFRAME"
   | "SET_COVER"
   | "SET_RATIO"
-  | "REPLACE_CLIP";
+  | "REPLACE_CLIP"
+  | "EXTRACT_AUDIO"
+  | "RESTORE_EXTRACT_AUDIO"
+  | "SET_AUDIO_VOLUME"
+  | "MUTE_CLIP"
+  | "MUTE_TRACK";
 
 export interface EditorCommand {
   id: string;

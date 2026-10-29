@@ -24,6 +24,7 @@ import { SpeedProcessor } from "../plugins/speed";
 import { ReverseProcessor } from "../plugins/reverse";
 import { FreezeProcessor } from "../plugins/freeze";
 import { CoverModal } from "../plugins/cover";
+import { AudioProcessor } from "../plugins/audio";
 
 interface RightInspectorProps {
   selectedText?: TextElement;
@@ -40,6 +41,7 @@ export function RightInspector({
 }: RightInspectorProps) {
   const [activeTab, setActiveTab] = useState<ClipTab>("transform");
   const [coverModalOpen, setCoverModalOpen] = useState(false);
+  const [audioActionError, setAudioActionError] = useState<string | null>(null);
 
   const selectedClipId = useEditorStore((state) => state.selectedClipId);
   const selectedClip = useEditorStore((state) =>
@@ -284,27 +286,72 @@ export function RightInspector({
                 <div className="control-group">
                   <div className="control-label-row">
                     <label className="control-label">Volume</label>
-                    <span className="control-val">100%</span>
+                    <span className="control-val">
+                      {Math.round((selectedClip.volume ?? 1) * 100)}%
+                    </span>
                   </div>
                   <input
                     type="range"
                     min="0"
                     max="200"
-                    defaultValue="100"
+                    value={Math.round((selectedClip.volume ?? 1) * 100)}
+                    onChange={(event) => {
+                      setAudioActionError(null);
+                      const updated = AudioProcessor.setVolume(
+                        selectedClip.id,
+                        Number(event.target.value) / 100
+                      );
+                      if (!updated) setAudioActionError("Unable to update this clip volume.");
+                    }}
                     className="inspector-slider"
                   />
                 </div>
 
                 <div className="audio-actions-row">
-                  <button type="button" className="audio-action-btn">
+                  <button
+                    type="button"
+                    className="audio-action-btn"
+                    disabled={!!selectedClip.locked}
+                    onClick={() => {
+                      setAudioActionError(null);
+                      const updated = AudioProcessor.setClipMuted(
+                        selectedClip.id,
+                        !(selectedClip.muted ?? false)
+                      );
+                      if (!updated) setAudioActionError("Unable to change mute state.");
+                    }}
+                  >
                     <SpeakerSlash size={14} weight="regular" />
-                    <span>Mute Clip</span>
+                    <span>{selectedClip.muted ? "Unmute Clip" : "Mute Clip"}</span>
                   </button>
-                  <button type="button" className="audio-action-btn">
+                  <button
+                    type="button"
+                    className="audio-action-btn"
+                    disabled={selectedClip.type !== "video" || !!selectedClip.locked}
+                    title={
+                      selectedClip.type === "video"
+                        ? "Create a separate audio clip on the Audio Track"
+                        : "Extract Audio is available for video clips"
+                    }
+                    onClick={() => {
+                      setAudioActionError(null);
+                      const updated = AudioProcessor.extractAudio(selectedClip.id);
+                      if (!updated) {
+                        setAudioActionError(
+                          "Audio extraction failed. Select an unlocked video clip and ensure an unlocked Audio Track exists."
+                        );
+                      }
+                    }}
+                  >
                     <Scissors size={14} weight="regular" />
                     <span>Extract Audio</span>
                   </button>
                 </div>
+                {audioActionError && (
+                  <p className="control-error" role="alert">
+                    {audioActionError}
+                  </p>
+                )}
               </div>
             )}
           </div>

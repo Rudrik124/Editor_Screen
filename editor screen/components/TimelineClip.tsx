@@ -6,7 +6,9 @@ import { TrimProcessor } from "../plugins/trim";
 import { useEditorStore } from "../store/editor.store";
 import { KeyframeMarkers } from "../plugins/keyframe";
 import { TransitionBadge } from "../plugins/transition";
+import { AudioProcessor } from "../plugins/audio";
 import { badgeStyle, getClipVisibleThumbnails } from "./utils/clipThumbnails";
+import { AudioWaveform } from "./AudioWaveform";
 
 export function TimelineClip({
   clip,
@@ -171,6 +173,7 @@ export function TimelineClip({
     start: clip.start,
     duration: clip.duration,
     locked: clip.locked,
+    muted: clip.muted,
     color: clip.color,
     assetId: clip.assetId,
     mediaUrl: clip.mediaUrl,
@@ -187,6 +190,7 @@ export function TimelineClip({
   };
 
   const visibleThumbnails = getClipVisibleThumbnails(clip);
+  const audioCapable = clip.type === "video" || clip.type === "audio" || clip.type === "music";
 
   return (
     <>
@@ -199,6 +203,9 @@ export function TimelineClip({
         onContextMenu={handleContextMenu}
       >
         <span className="clip-visual" style={presentationStyle}>
+          {(clip.type === "audio" || clip.type === "music") && (
+            <AudioWaveform url={clip.mediaUrl} name={clip.name || clip.label} />
+          )}
           {visibleThumbnails.length > 0 ? (
             <div className="thumbnails">
               {visibleThumbnails.map((thumbnail, index) => (
@@ -239,6 +246,40 @@ export function TimelineClip({
             )}
             <span>{clip.label}</span>
           </span>
+          {audioCapable && (
+            <span
+              className={`timeline-clip-mute ${clip.muted ? "muted" : ""}`}
+              role="button"
+              tabIndex={0}
+              aria-pressed={Boolean(clip.muted)}
+              title={clip.muted ? "Unmute clip" : "Mute clip"}
+              aria-label={clip.muted ? "Unmute clip" : "Mute clip"}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+              }}
+              onClick={(event) => {
+                event.stopPropagation();
+                AudioProcessor.setClipMuted(clip.id, !clip.muted);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  AudioProcessor.setClipMuted(clip.id, !clip.muted);
+                }
+              }}
+            >
+              {clip.muted ? (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 10v4h4l5 4V6l-5 4H4Zm13.5-3 4 4m0-4-4 4" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 10v4h4l5 4V6l-5 4H4Zm13.5-3a5 5 0 0 1 0 10M20 4a9 9 0 0 1 0 16" />
+                </svg>
+              )}
+            </span>
+          )}
 
           {(selected || clip.type === "video") && !clip.locked && (
             <>

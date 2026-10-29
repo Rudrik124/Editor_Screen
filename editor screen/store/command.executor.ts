@@ -32,6 +32,13 @@ import {
   handleReplaceClip,
 } from "./phase3.mutations";
 import { sanitizeClipName } from "./sanitize";
+import {
+  handleExtractAudio,
+  handleRestoreExtractAudio,
+  handleSetAudioVolume,
+  handleMuteClip,
+  handleMuteTrack,
+} from "./audio.mutations";
 
 export { sanitizeClipName };
 export type { TimelineStateSlice };
@@ -91,6 +98,16 @@ export function executeCommandMutation(
       return handleSetCover(state, command);
     case "REPLACE_CLIP":
       return handleReplaceClip(state, command);
+    case "EXTRACT_AUDIO":
+      return handleExtractAudio(state, command);
+    case "RESTORE_EXTRACT_AUDIO":
+      return handleRestoreExtractAudio(state, command);
+    case "SET_AUDIO_VOLUME":
+      return handleSetAudioVolume(state, command);
+    case "MUTE_CLIP":
+      return handleMuteClip(state, command);
+    case "MUTE_TRACK":
+      return handleMuteTrack(state, command);
     default:
       console.warn(`Unknown command type: ${type}`);
       return null;

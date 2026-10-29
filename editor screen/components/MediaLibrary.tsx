@@ -24,45 +24,37 @@ import {
   MagnifyingGlassPlus,
   Lightning,
 } from "@phosphor-icons/react";
-import { VideoAsset } from "../types/editor.types";
+import { AudioAsset, VideoAsset } from "../types/editor.types";
 import { useEditorStore } from "../store/editor.store";
 import { AspectRatio } from "../types/editor.types";
 import { TransitionModal } from "../plugins/transition";
+import { SAMPLE_MEDIA } from "../data/sampleMedia";
 
 interface MediaLibraryProps {
   onMediaSelected: (file: File) => void;
   error?: string | null;
   videoAssets?: VideoAsset[];
+  audioAssets?: AudioAsset[];
   onAddVideo?: (asset: VideoAsset) => void;
+  onAddAudio?: (asset: AudioAsset) => void;
   onAddText?: () => void;
 }
 
 type NavTab = "media" | "audio" | "text" | "transitions" | "canvas";
 
-const SAMPLE_MEDIA = [
-  {
-    name: "Nature Drone Footage",
-    duration: "00:15",
-    type: "video",
-    url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-  },
-  {
-    name: "Urban Night Lights",
-    duration: "00:12",
-    type: "video",
-    url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-  },
-];
-
 export function MediaLibrary({
   onMediaSelected,
   error,
   videoAssets = [],
+  audioAssets = [],
   onAddVideo,
+  onAddAudio,
   onAddText,
 }: MediaLibraryProps) {
   const [activeTab, setActiveTab] = useState<NavTab>("media");
   const [transitionModalOpen, setTransitionModalOpen] = useState(false);
+  const [sampleLoadError, setSampleLoadError] = useState<string | null>(null);
+  const [loadingSample, setLoadingSample] = useState<string | null>(null);
 
   const aspectRatio = useEditorStore((state) => state.aspectRatio);
   const setAspectRatio = useEditorStore((state) => state.setAspectRatio);
@@ -71,15 +63,30 @@ export function MediaLibrary({
     selectedClipId ? state.clips[selectedClipId] : null
   );
 
-  const loadSampleVideo = async (url: string, name: string) => {
+  const loadSampleVideo = async (
+    sample: (typeof SAMPLE_MEDIA)[number]
+  ) => {
+    setSampleLoadError(null);
+    setLoadingSample(sample.name);
     try {
-      const res = await fetch(url);
+      const res = await fetch(sample.url);
+      if (!res.ok) {
+        throw new Error(`Sample video request failed (${res.status}).`);
+      }
       const blob = await res.blob();
-      const file = new File([blob], `${name}.mp4`, { type: "video/mp4" });
+      if (blob.size === 0) {
+        throw new Error("The sample video download was empty.");
+      }
+      const file = new File([blob], `${sample.name}.${sample.extension}`, {
+        type: blob.type || (sample.extension === "webm" ? "video/webm" : "video/mp4"),
+      });
       onMediaSelected(file);
-    } catch {
-      const file = new File([new Blob()], `${name}.mp4`, { type: "video/mp4" });
-      onMediaSelected(file);
+    } catch (error) {
+      setSampleLoadError(
+        error instanceof Error ? error.message : "Unable to load the sample video."
+      );
+    } finally {
+      setLoadingSample(null);
     }
   };
 
@@ -173,6 +180,12 @@ export function MediaLibrary({
                 <span>{error}</span>
               </div>
             )}
+            {sampleLoadError && (
+              <div className="library-error-banner" role="alert">
+                <WarningCircle size={15} />
+                <span>{sampleLoadError}</span>
+              </div>
+            )}
 
             {/* Imported Assets Section */}
             {videoAssets.length > 0 && (
@@ -224,10 +237,11 @@ export function MediaLibrary({
                     <button
                       type="button"
                       className="sample-load-btn"
-                      onClick={() => loadSampleVideo(sample.url, sample.name)}
+                      onClick={() => void loadSampleVideo(sample)}
+                      disabled={loadingSample !== null}
                     >
                       <Plus size={11} weight="bold" />
-                      <span>Use</span>
+                      <span>{loadingSample === sample.name ? "Loading" : "Use"}</span>
                     </button>
                   </div>
                 ))}
@@ -271,6 +285,42 @@ export function MediaLibrary({
                 <span className="audio-tag">Mic</span>
               </button>
             </div>
+
+            {audioAssets.length > 0 && (
+              <div className="imported-assets-section">
+                <div className="section-title">
+                  Imported Audio ({audioAssets.length})
+                </div>
+                <div className="audio-preset-list">
+                  {audioAssets.map((asset) => (
+                    <div className="sound-item" key={asset.id}>
+                      <div className="sound-item-left">
+                        <span className="sound-icon">
+                          <MusicNotes size={13} weight="fill" />
+                        </span>
+                        <div>
+                          <div className="sound-name" title={asset.name}>
+                            {asset.name}
+                          </div>
+                          <div className="sound-sub">
+                            Imported • {asset.duration.toFixed(1)}s
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="sound-add-btn"
+                        onClick={() => onAddAudio?.(asset)}
+                        disabled={!onAddAudio}
+                      >
+                        <Plus size={11} weight="bold" />
+                        <span>Add</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="section-title" style={{ marginTop: "16px" }}>BGM & Sound Effects</div>
             <div className="audio-preset-list">

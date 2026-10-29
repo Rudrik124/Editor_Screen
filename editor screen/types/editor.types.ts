@@ -42,6 +42,7 @@ export interface TimelineClip {
   mediaUrl?: string;
   presentationWidth?: number;
   locked?: boolean;
+  muted?: boolean;
   name?: string;
   speed?: number;
   baseDuration?: number;
@@ -61,6 +62,15 @@ export interface VideoAsset {
   thumbnailUrl: string;
   thumbnails: string[];
   mediaType?: "video" | "image" | "audio";
+}
+
+export interface AudioAsset {
+  id: string;
+  url: string;
+  renderUrl: string;
+  name: string;
+  duration: number;
+  mediaType: "audio";
 }
 
 export type AspectRatio = "16:9" | "9:16" | "1:1" | "4:5" | "21:9";
@@ -115,6 +125,8 @@ export interface Track {
   label: string;
   type: TimelineClip["type"];
   clips: TimelineClip[];
+  muted?: boolean;
+  locked?: boolean;
 }
 
 export interface ClipModel {
@@ -137,6 +149,7 @@ export interface ClipModel {
   presentationWidth?: number;
   content?: string;
   volume?: number;
+  muted?: boolean;
   speed?: number;
   baseDuration?: number;
   reverse?: boolean;
@@ -160,4 +173,6 @@ export interface TrackModel {
   type: "video" | "audio" | "text" | "music";
   clipIds: string[];
   locked?: boolean;
+  muted?: boolean;
+  hidden?: boolean;
 }

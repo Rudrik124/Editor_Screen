@@ -15,6 +15,7 @@ import {
 import { Track, TimelineClip as TimelineClipData } from "../types/editor.types";
 import { TimelineClip } from "./TimelineClip";
 import { useEditorStore } from "../store/editor.store";
+import { AudioProcessor } from "../plugins/audio";
 
 export function TimelineTrack({
   track,
@@ -29,9 +30,9 @@ export function TimelineTrack({
   onResizeClip?: (clip: TimelineClipData, edge: "left" | "right", seconds: number) => void;
   timelineDuration?: number;
 }) {
-  const [muted, setMuted] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [locked, setLocked] = useState(false);
+  const muted = track.muted ?? false;
   const dispatch = useEditorStore((state) => state.dispatch);
 
   // Detect blank gaps between consecutive clips
@@ -87,7 +88,7 @@ export function TimelineTrack({
               type="button"
               className={`track-mini-btn ${muted ? "active-muted" : ""}`}
               title={muted ? "Unmute track" : "Mute track"}
-              onClick={() => setMuted(!muted)}
+              onClick={() => AudioProcessor.setTrackMuted(track.id, !muted)}
               aria-label={muted ? "Unmute track" : "Mute track"}
             >
               {muted ? <SpeakerSlash size={13} weight="bold" /> : <SpeakerHigh size={13} weight="regular" />}

@@ -16,6 +16,17 @@ def test_valid_clip_schema():
     assert clip.id == "clip-1"
     assert clip.duration == 5.5
     assert clip.speed == 1.5
+    assert clip.muted is False
+
+def test_clip_schema_accepts_muted_state():
+    clip = ClipSchema(
+        id="clip-muted",
+        trackId="track-1",
+        type="video",
+        duration=2.0,
+        muted=True
+    )
+    assert clip.muted is True
 
 def test_clip_schema_rejects_negative_duration():
     with pytest.raises(ValidationError):

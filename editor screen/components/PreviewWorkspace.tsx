@@ -11,6 +11,7 @@ import { formatVideoTime } from "./utils/formatVideoTime";
 import { TextElement } from "../left-side toolbar/functionality/text/functionality/text.types";
 import { useEditorStore } from "../store/editor.store";
 import { WebGLRenderer } from "../renderer/webgl.renderer";
+import { AudioEngine } from "../renderer/audio.engine";
 import { evaluateClipTransforms } from "../renderer/keyframe.interpolator";
 import { RatioProcessor, RatioSelector } from "../plugins/ratio";
 import { CoverModal } from "../plugins/cover";
@@ -66,6 +67,7 @@ export function PreviewWorkspace({
   const rendererRef = useRef<WebGLRenderer | null>(null);
 
   const [coverModalOpen, setCoverModalOpen] = useState(false);
+  const [audioPlaybackError, setAudioPlaybackError] = useState<string | null>(null);
 
   const storeTracks = useEditorStore((state) => state.tracks);
   const storeClips = useEditorStore((state) => state.clips);
@@ -225,6 +227,21 @@ export function PreviewWorkspace({
     };
   }, []);
 
+  useEffect(() => {
+    const audioEngine = new AudioEngine(setAudioPlaybackError);
+    const unsubscribe = useEditorStore.subscribe((state) => {
+      audioEngine.handleStateChange(state);
+    });
+    audioEngine.handleStateChange(useEditorStore.getState());
+
+    return () => {
+      unsubscribe();
+      void audioEngine.destroy().catch((error) => {
+        console.error("Unable to cleanly close the audio engine.", error);
+      });
+    };
+  }, []);
+
   // Keep ref of renderFrame so playback loop does NOT re-initialize on every tick
   const renderFrameRef = useRef(renderFrame);
   useEffect(() => {
@@ -252,11 +269,11 @@ export function PreviewWorkspace({
 
       if (nextTime >= state.duration) {
         state.setIsPlaying(false);
-        state.setCurrentTime(0);
+        state.setCurrentTime(0, false);
         return;
       }
 
-      state.setCurrentTime(nextTime);
+      state.setCurrentTime(nextTime, false);
       renderFrameRef.current();
       animId = requestAnimationFrame(tick);
     };
@@ -395,6 +412,11 @@ export function PreviewWorkspace({
   return (
     <section className="preview-workspace">
       <div className="preview-canvas">
+        {audioPlaybackError && (
+          <div className="audio-playback-error" role="alert">
+            Audio playback issue: {audioPlaybackError}
+          </div>
+        )}
         {hasActiveMedia ? (
           <div
             className="preview-art"
@@ -606,4 +628,3 @@ export function PreviewWorkspace({
     </section>
   );
 }
-

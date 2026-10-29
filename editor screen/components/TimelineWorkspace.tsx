@@ -37,13 +37,8 @@ export function TimelineWorkspace({
   const timelineMainRef = useRef<HTMLDivElement>(null);
 
   // Calculate timeline duration from active clips
-  const videoClipEnds = Object.values(storeClips)
-    .filter((clip) => clip.type === "video")
-    .map((clip) => clip.start + clip.duration);
   const clipEnds = Object.values(storeClips).map((clip) => clip.start + clip.duration);
-  const hasVideo = videoClipEnds.length > 0;
   const hasClips = clipEnds.length > 0;
-  const videoDuration = Math.max(...videoClipEnds, 0);
   const timelineDuration = Math.max(9.66, ...clipEnds, 0);
 
   useEffect(() => {
@@ -105,19 +100,17 @@ export function TimelineWorkspace({
     const clips: TimelineClip[] = track.clipIds
       .map((id) => storeClips[id])
       .filter(Boolean)
-      .filter((clip) => hasVideo || (clip.type !== "music" && clip.type !== "audio"))
       .map((c) => ({
         id: c.id,
         label: c.name,
         type: c.type,
         start: c.start,
-        duration:
-          hasVideo && (c.type === "music" || c.type === "audio")
-            ? videoDuration
-            : c.duration,
+        duration: c.duration,
         color: c.color || "#22262b",
-        thumbnails: c.thumbnails,
-        rawThumbnails: c.rawThumbnails || c.thumbnails,
+        // Audio clips retain the source media for extraction/export, but their
+        // timeline representation is an audio block rather than video frames.
+        thumbnails: c.type === "video" ? c.thumbnails : undefined,
+        rawThumbnails: c.type === "video" ? c.rawThumbnails || c.thumbnails : undefined,
         baseDuration: c.baseDuration,
         assetId: c.assetId,
         mediaUrl: c.mediaUrl,
@@ -130,12 +123,15 @@ export function TimelineWorkspace({
         freezeTime: c.freezeTime,
         inPoint: c.inPoint,
         outPoint: c.outPoint,
+        muted: c.muted,
       }));
 
     return {
       id: track.id,
       label: track.label,
       type: track.type,
+      muted: track.muted,
+      locked: track.locked,
       clips,
     };
   });

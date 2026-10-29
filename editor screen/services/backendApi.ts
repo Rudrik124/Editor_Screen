@@ -1,4 +1,5 @@
 import { ClipModel, TrackModel } from "../types/editor.types";
+import { getAudioPlaybackRate } from "../utils/audioTimeline";
 
 const RAW_API_URL = (import.meta.env.VITE_API_URL as string | undefined) || "http://localhost:8000";
 const API_BASE = `${RAW_API_URL.replace(/\/+$/, "")}/api/v1`;
@@ -22,8 +23,7 @@ export async function uploadAsset(file: File): Promise<UploadedAssetResponse> {
   });
 
   if (!response.ok) {
-    const err = await response.json().catch(() => ({ detail: "Asset upload failed" }));
-    throw new Error(err.detail || "Asset upload failed");
+    throw new Error(await getApiErrorMessage(response, "Asset upload failed"));
   }
 
   return response.json();
@@ -55,6 +55,47 @@ export interface ProgressMessage {
   error?: string;
 }
 
+interface ApiValidationError {
+  loc?: Array<string | number>;
+  msg?: string;
+}
+
+function formatApiErrorDetail(detail: unknown): string | null {
+  if (typeof detail === "string") return detail;
+  if (!Array.isArray(detail)) return null;
+
+  const messages = detail.map((entry: unknown) => {
+    if (!entry || typeof entry !== "object") return String(entry);
+    const validationError = entry as ApiValidationError;
+    const location = validationError.loc
+      ?.filter((part) => part !== "body")
+      .map((part, index, parts) =>
+        typeof part === "number" ? `[${part}]` : `${index > 0 ? "." : ""}${part}`
+      )
+      .join("");
+    return [location, validationError.msg].filter(Boolean).join(": ");
+  });
+
+  return messages.filter(Boolean).join("; ") || null;
+}
+
+async function getApiErrorMessage(
+  response: Response,
+  fallback: string
+): Promise<string> {
+  let detail: unknown;
+  try {
+    const body: unknown = await response.json();
+    if (body && typeof body === "object" && "detail" in body) {
+      detail = body.detail;
+    }
+  } catch {
+    return `${fallback} (HTTP ${response.status}).`;
+  }
+
+  return `${formatApiErrorDetail(detail) || fallback} (HTTP ${response.status}).`;
+}
+
 export async function submitTimelineRender(
   projectId: string,
   tracks: TrackModel[],
@@ -68,8 +109,8 @@ export async function submitTimelineRender(
     type: t.type,
     clipIds: t.clipIds,
     orderIndex: 0,
-    muted: false,
-    hidden: false,
+    muted: t.muted ?? false,
+    hidden: t.hidden ?? false,
     locked: !!t.locked,
   }));
 
@@ -87,11 +128,15 @@ export async function submitTimelineRender(
       outPoint: c.outPoint,
       mediaUrl: c.renderMediaUrl || c.mediaUrl,
       assetId: c.assetId,
-      speed: c.speed || 1.0,
+      speed:
+        c.type === "audio" || c.type === "music"
+          ? getAudioPlaybackRate(c)
+          : c.speed || 1.0,
       reverse: !!c.reverse,
       isFrozen: !!c.isFrozen,
       freezeTime: c.freezeTime,
       volume: c.volume !== undefined ? c.volume : 1.0,
+      muted: c.muted ?? false,
       color: c.color,
       // Phase 3: Transition, Keyframes, Layering Transforms
       transition: c.transition
@@ -122,8 +167,7 @@ export async function submitTimelineRender(
   });
 
   if (!response.ok) {
-    const err = await response.json().catch(() => ({ detail: "Render request failed" }));
-    throw new Error(err.detail || "Render request failed");
+    throw new Error(await getApiErrorMessage(response, "Render request failed"));
   }
 
   return response.json();

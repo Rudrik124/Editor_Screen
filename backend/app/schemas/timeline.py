@@ -40,6 +40,7 @@ class ClipSchema(BaseModel):
     isFrozen: bool = False
     freezeTime: Optional[float] = None
     volume: float = Field(default=1.0, ge=0.0, le=5.0)
+    muted: bool = False
     
     # Layering & Transforms
     opacity: float = Field(default=1.0, ge=0.0, le=1.0)

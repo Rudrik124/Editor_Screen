@@ -11,12 +11,14 @@ import { TimelineToolbar } from "./components/TimelineToolbar";
 import { TimelineWorkspace } from "./components/TimelineWorkspace";
 import { MobileToolDock } from "./components/MobileToolDock";
 import { createVideoAsset } from "./left-side toolbar/functionality/Video/functionality/createVideoAsset";
-import { VideoAsset, ClipModel } from "./types/editor.types";
+import { VideoAsset, AudioAsset, ClipModel } from "./types/editor.types";
 import { useTextElements } from "./left-side toolbar/functionality/text/functionality/useTextElements";
 import { useEditorStore } from "./store/editor.store";
 import { useEditorKeyboardShortcuts } from "./hooks/useEditorKeyboardShortcuts";
 import { uploadAsset } from "./services/backendApi";
 import { isImageMedia } from "./components/utils/previewResolver";
+import { createAudioAsset } from "./left-side toolbar/functionality/Audio/functionality/createAudioAsset";
+import { DEFAULT_SAMPLE_MEDIA } from "./data/sampleMedia";
 
 export function VeytrixEditor() {
   // Bind global keyboard shortcuts (Ctrl+Z, Ctrl+Shift+Z, S, Del, Space)
@@ -27,11 +29,12 @@ export function VeytrixEditor() {
     type: "video" | "image";
     name: string;
   } | null>({
-    url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    url: DEFAULT_SAMPLE_MEDIA.url,
     type: "video",
-    name: "Nature Drone Footage",
+    name: "Flower Sample",
   });
   const [videoAssets, setVideoAssets] = useState<VideoAsset[]>([]);
+  const [audioAssets, setAudioAssets] = useState<AudioAsset[]>([]);
   const [addedVideoIds, setAddedVideoIds] = useState<string[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const text = useTextElements();
@@ -41,6 +44,7 @@ export function VeytrixEditor() {
   }>({ isPlaying: false, toggle: () => undefined });
 
   const videoAssetsRef = useRef<VideoAsset[]>([]);
+  const audioAssetsRef = useRef<AudioAsset[]>([]);
   const mediaRef = useRef<typeof media>(null);
 
   const selectedClipId = useEditorStore((state) => state.selectedClipId);
@@ -50,11 +54,13 @@ export function VeytrixEditor() {
 
   useEffect(() => {
     videoAssetsRef.current = videoAssets;
+    audioAssetsRef.current = audioAssets;
     mediaRef.current = media;
-  }, [media, videoAssets]);
+  }, [media, videoAssets, audioAssets]);
 
   useEffect(() => () => {
     videoAssetsRef.current.forEach((asset) => URL.revokeObjectURL(asset.url));
+    audioAssetsRef.current.forEach((asset) => URL.revokeObjectURL(asset.url));
     if (
       mediaRef.current &&
       !videoAssetsRef.current.some((asset) => asset.url === mediaRef.current?.url)
@@ -67,6 +73,7 @@ export function VeytrixEditor() {
   useEffect(() => {
     if (selectedClipId && clips[selectedClipId]) {
       const clip = clips[selectedClipId];
+      if (clip.type === "audio" || clip.type === "music") return;
       if (clip.mediaUrl) {
         const isImage = clip.mediaType === "image" || isImageMedia(clip.mediaUrl, clip.name);
         setMedia({
@@ -127,8 +134,75 @@ export function VeytrixEditor() {
     });
   };
 
+  const addAudioAssetToStore = (asset: AudioAsset): boolean => {
+    const state = useEditorStore.getState();
+    const audioTrack = state.tracks.find(
+      (track) => track.type === "audio" || track.type === "music"
+    );
+    if (!audioTrack || audioTrack.locked) {
+      setUploadError("Unable to add audio: an unlocked Audio Track is required.");
+      return false;
+    }
+
+    const start = audioTrack.clipIds.reduce((end, clipId) => {
+      const clip = state.clips[clipId];
+      return clip ? Math.max(end, clip.start + clip.duration) : end;
+    }, 0);
+    const clip: ClipModel = {
+      id: `audio-${asset.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      trackId: audioTrack.id,
+      name: asset.name,
+      type: "audio",
+      mediaType: "audio",
+      start,
+      duration: asset.duration,
+      color: "#1e3a8a",
+      mediaUrl: asset.url,
+      renderMediaUrl: asset.renderUrl,
+      assetId: asset.id,
+      volume: 1,
+      muted: false,
+      inPoint: 0,
+      outPoint: asset.duration,
+      baseDuration: asset.duration,
+    };
+    const added = dispatch({
+      id: `add-audio-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      type: "ADD_CLIP",
+      payload: { clip, trackId: audioTrack.id },
+      timestamp: Date.now(),
+    });
+    if (!added) setUploadError("Unable to add the audio clip to the timeline.");
+    return added;
+  };
+
   const handleMediaSelected = async (file: File) => {
     setUploadError(null);
+    if (file.type.startsWith("audio/")) {
+      let asset: AudioAsset | undefined;
+      try {
+        asset = await createAudioAsset(file);
+        const uploaded = await uploadAsset(file);
+        const uploadedAudio: AudioAsset = {
+          ...asset,
+          id: uploaded.assetId || asset.id,
+          renderUrl: uploaded.mediaUrl,
+        };
+        if (!addAudioAssetToStore(uploadedAudio)) {
+          URL.revokeObjectURL(asset.url);
+          return;
+        }
+        setAudioAssets((current) => [...current, uploadedAudio]);
+      } catch (error) {
+        if (asset) URL.revokeObjectURL(asset.url);
+        console.error("Unable to import uploaded audio.", error);
+        setUploadError(
+          error instanceof Error ? error.message : "Unable to import this audio file."
+        );
+      }
+      return;
+    }
+
     if (file.type.startsWith("video/")) {
       try {
         const asset = await createVideoAsset(file);
@@ -208,14 +282,11 @@ export function VeytrixEditor() {
       return;
     }
 
-    if (media && !videoAssets.some((asset) => asset.url === media.url)) {
-      URL.revokeObjectURL(media.url);
-    }
-    setMedia({
-      url: URL.createObjectURL(file),
-      type: "image",
-      name: file.name,
-    });
+    setUploadError("Unsupported media type. Choose a video, image, or audio file.");
+  };
+
+  const addAudioToTimeline = (asset: AudioAsset) => {
+    addAudioAssetToStore(asset);
   };
 
   const addVideoToTimeline = (asset: VideoAsset) => {
@@ -258,7 +329,9 @@ export function VeytrixEditor() {
             onMediaSelected={handleMediaSelected}
             error={uploadError}
             videoAssets={videoAssets}
+            audioAssets={audioAssets}
             onAddVideo={addVideoToTimeline}
+            onAddAudio={addAudioToTimeline}
             onAddText={text.add}
           />
           <PreviewWorkspace
@@ -311,4 +384,3 @@ export function VeytrixEditor() {
 }
 
 export default VeytrixEditor;
-

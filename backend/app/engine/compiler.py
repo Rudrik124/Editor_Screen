@@ -34,25 +34,14 @@ class TimelineCompiler:
         Compiles TimelineExportRequest into command arguments and total duration.
         Returns: (cmd_args, total_duration_seconds)
         """
-        # Calculate total duration accounting for transitions
+        # Clip start times are absolute timeline positions, so duration must include gaps.
         total_duration = 0.0
         for track in request.tracks:
             t_clips = [c for c in request.clips if c.trackId == track.id]
             t_clips.sort(key=lambda c: c.start)
             if not t_clips:
                 continue
-            t_start = t_clips[0].start
-            t_dur = sum(c.duration for c in t_clips)
-            for i in range(len(t_clips) - 1):
-                c1, c2 = t_clips[i], t_clips[i+1]
-                trans = c1.transition or c2.transition
-                if trans:
-                    raw_type = trans.type if hasattr(trans, "type") else trans.get("type", None)
-                    raw_dur = trans.duration if hasattr(trans, "duration") else trans.get("duration", 0.5)
-                    if raw_type != "instant_cut" and float(raw_dur) > 0.001:
-                        trans_dur = max(0.05, min(float(raw_dur), c1.duration * 0.9, c2.duration * 0.9))
-                        t_dur -= trans_dur
-            track_end = t_start + max(0.0, t_dur)
+            track_end = max(clip.start + clip.duration for clip in t_clips)
             if track_end > total_duration:
                 total_duration = track_end
 
@@ -89,6 +78,7 @@ class TimelineCompiler:
         # 2. Process Clips (sorted by track layer order and start time)
         track_order = {t.id: idx for idx, t in enumerate(request.tracks)}
         sorted_clips = sorted(request.clips, key=lambda c: (track_order.get(c.trackId, 0), c.start))
+        tracks_by_id = {track.id: track for track in request.tracks}
 
         video_overlay_streams: List[Tuple[ClipSchema, FilterStream]] = []
         audio_streams: List[FilterStream] = []
@@ -240,7 +230,15 @@ class TimelineCompiler:
                 video_overlay_streams.append((clip, stream))
 
             # Process Audio Stream (exclude frozen clips as freeze frames have no audio)
-            if clip.type in ("video", "audio", "music") and input_idx is not None and not clip.isFrozen:
+            track = tracks_by_id.get(clip.trackId)
+            track_muted = track.muted if track else False
+            if (
+                clip.type in ("video", "audio", "music")
+                and input_idx is not None
+                and not clip.isFrozen
+                and not clip.muted
+                and not track_muted
+            ):
                 raw_a = context.generate_label("a_raw")
                 context.add_node(FilterNode(
                     filter_name="aformat",
@@ -428,6 +426,9 @@ class TimelineCompiler:
             candidate = settings.UPLOAD_DIR / filename
             if candidate.exists():
                 return str(candidate)
+            raise FileNotFoundError(
+                f"Uploaded media file '{filename}' was not found in backend storage."
+            )
 
         # 2. Check if direct local absolute or relative path
         local_p = Path(clean_url)
@@ -448,13 +449,6 @@ class TimelineCompiler:
             # Pass remote URL to FFmpeg
             return media_url
 
-        # 5. Fallback for sample clips / blob URLs: find existing test/sample video
-        sim_video = settings.STORAGE_DIR / "test_user_sim.mp4"
-        if sim_video.exists():
-            return str(sim_video)
-
-        upload_files = list(settings.UPLOAD_DIR.glob("*.mp4"))
-        if upload_files:
-            return str(upload_files[0])
-
-        return None
+        raise FileNotFoundError(
+            f"Media source '{media_url}' is not a readable local file or supported remote URL."
+        )
