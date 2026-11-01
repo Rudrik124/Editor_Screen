@@ -253,6 +253,8 @@
   background: #11141a;
   padding: 0 4px;
   gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .library-tabs::-webkit-scrollbar {
@@ -260,8 +262,8 @@
 }
 
 .library-tab {
-  flex: 1;
-  min-width: 0;
+  flex: 0 0 auto;
+  min-width: 54px;
   height: 40px;
   display: inline-flex;
   flex-direction: column;
@@ -1058,6 +1060,8 @@
   background: #11141a;
   padding: 0 4px;
   gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .inspector-tabs::-webkit-scrollbar {
@@ -1065,8 +1069,8 @@
 }
 
 .inspector-tab {
-  flex: 1;
-  min-width: 0;
+  flex: 0 0 auto;
+  min-width: 54px;
   height: 40px;
   display: inline-flex;
   flex-direction: column;

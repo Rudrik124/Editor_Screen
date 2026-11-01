@@ -348,15 +348,38 @@ export function handleReplaceClip(
     newRenderMediaUrl ??
     (newMediaUrl.startsWith("blob:") ? clip.renderMediaUrl : newMediaUrl);
 
+  const updatedDuration = newDuration !== undefined ? newDuration : clip.duration;
   const updatedClip: ClipModel = {
     ...clip,
     mediaUrl: newMediaUrl,
     renderMediaUrl: resolvedRenderMediaUrl,
     assetId: newAssetId ?? clip.assetId,
     name: newName ?? clip.name,
+    duration: updatedDuration,
+    outPoint: (clip.inPoint ?? 0) + updatedDuration,
     baseDuration: newDuration ?? clip.baseDuration,
     thumbnails: newThumbnails ?? clip.thumbnails,
   };
+
+  const durDiff = updatedDuration - clip.duration;
+  const updatedClips: Record<string, ClipModel> = { ...state.clips, [clipId]: updatedClip };
+
+  // Ripple-shift any subsequent clips on the same track if duration changed to prevent blank gaps
+  if (Math.abs(durDiff) > 0.001) {
+    const track = state.tracks.find((t) => t.id === clip.trackId);
+    if (track) {
+      for (const cid of track.clipIds) {
+        if (cid === clipId) continue;
+        const other = state.clips[cid];
+        if (other && other.start >= clip.start + clip.duration - 0.01) {
+          updatedClips[cid] = {
+            ...other,
+            start: Math.max(0, other.start + durDiff),
+          };
+        }
+      }
+    }
+  }
 
   const inverse: EditorCommand = {
     id: `inv-${command.id}`,
@@ -367,7 +390,7 @@ export function handleReplaceClip(
       newRenderMediaUrl: previous.renderMediaUrl,
       newAssetId: previous.assetId,
       newName: previous.name,
-      newDuration: previous.baseDuration,
+      newDuration: clip.duration,
       newThumbnails: previous.thumbnails,
     },
     timestamp: Date.now(),
@@ -375,7 +398,7 @@ export function handleReplaceClip(
 
   return {
     newState: {
-      clips: { ...state.clips, [clipId]: updatedClip },
+      clips: updatedClips,
     },
     inverse,
   };

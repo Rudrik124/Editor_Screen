@@ -1,3 +1,4 @@
+from app.runners.probe_runner import ProbeRunner
 import os
 from pathlib import Path
 from typing import List, Tuple, Dict, Any, Optional
@@ -36,14 +37,60 @@ class TimelineCompiler:
         """
         # Clip start times are absolute timeline positions, so duration must include gaps.
         total_duration = 0.0
-        for track in request.tracks:
-            t_clips = [c for c in request.clips if c.trackId == track.id]
-            t_clips.sort(key=lambda c: c.start)
-            if not t_clips:
-                continue
-            track_end = max(clip.start + clip.duration for clip in t_clips)
-            if track_end > total_duration:
-                total_duration = track_end
+
+        # Check if visual clips (video, image, text) exist on the timeline
+        video_clips = [c for c in request.clips if c.type in ("video", "image", "text")]
+        if video_clips:
+            # Find true end of visual spine (accounting for transitions)
+            max_video_end = 0.0
+            video_tracks = [t for t in request.tracks if t.type in ("video", "text") or "video" in t.id or "text" in t.id]
+            for track in video_tracks:
+                t_clips = [c for c in video_clips if c.trackId == track.id]
+                t_clips.sort(key=lambda c: c.start)
+                if not t_clips:
+                    continue
+                has_transitions = any(c.transition for c in t_clips)
+                if has_transitions and len(t_clips) > 1:
+                    cum_dur = t_clips[0].duration
+                    for prev, nxt in zip(t_clips[:-1], t_clips[1:]):
+                        trans = prev.transition or nxt.transition
+                        if trans:
+                            raw_dur = trans.duration if hasattr(trans, "duration") else trans.get("duration", 0.5)
+                            if float(raw_dur) > 0.001:
+                                trans_dur = max(0.05, min(float(raw_dur), prev.duration * 0.9, nxt.duration * 0.9))
+                                cum_dur = round(cum_dur - trans_dur + nxt.duration, 3)
+                                continue
+                        cum_dur = round(cum_dur + nxt.duration, 3)
+                    t_end = t_clips[0].start + cum_dur
+                else:
+                    t_end = max(c.start + c.duration for c in t_clips)
+                if t_end > max_video_end:
+                    max_video_end = t_end
+
+            if max_video_end > 0.0:
+                total_duration = max_video_end
+                # Automatically trim down audio clips that exceed video length
+                trimmed_clips = []
+                for clip in request.clips:
+                    if clip.type in ("audio", "music"):
+                        if clip.start >= max_video_end:
+                            continue  # Audio clip starts after video ends; omit
+                        if clip.start + clip.duration > max_video_end:
+                            trimmed_dur = max(0.05, round(max_video_end - clip.start, 3))
+                            clip.duration = trimmed_dur
+                            clip.outPoint = (clip.inPoint or 0.0) + trimmed_dur
+                    trimmed_clips.append(clip)
+                request.clips = trimmed_clips
+
+        if total_duration <= 0.0:
+            for track in request.tracks:
+                t_clips = [c for c in request.clips if c.trackId == track.id]
+                t_clips.sort(key=lambda c: c.start)
+                if not t_clips:
+                    continue
+                track_end = max(clip.start + clip.duration for clip in t_clips)
+                if track_end > total_duration:
+                    total_duration = track_end
 
         if total_duration <= 0.0:
             for clip in request.clips:
@@ -227,22 +274,52 @@ class TimelineCompiler:
                         ))
                     stream = FilterStream(name=op_label, stream_type="video", duration=stream.duration)
 
+                # Final PTS Anchor: align stream timestamps with clip.start on the timeline
+                pts_anchor_label = context.generate_label("v_pts_anchor")
+                pts_expr = f"PTS-STARTPTS+({clip.start}/TB)" if clip.start > 0 else "PTS-STARTPTS"
+                context.add_node(FilterNode(
+                    filter_name="setpts",
+                    inputs=[stream.name],
+                    outputs=[pts_anchor_label],
+                    args={"expr": pts_expr}
+                ))
+                stream = FilterStream(name=pts_anchor_label, stream_type="video", duration=stream.duration)
+
                 video_overlay_streams.append((clip, stream))
 
             # Process Audio Stream (exclude frozen clips as freeze frames have no audio)
             track = tracks_by_id.get(clip.trackId)
             track_muted = track.muted if track else False
+            # BUG FIX (Phase 4): Warn loudly when an audio clip has no resolvable media path.
+            # Without this, the clip is silently excluded and the export succeeds with no audio.
+            if clip.type in ("audio", "music") and input_idx is None:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "EXPORT WARNING: Audio clip '%s' (type=%s, trackId=%s) has no resolvable "
+                    "mediaUrl and will be excluded from export. Check that renderMediaUrl "
+                    "is set on the frontend clip before submitting the render job.",
+                    clip.id, clip.type, clip.trackId
+                )
+            has_audio = True
+            if clip.type == "video" and media_path and not str(media_path).startswith(("http://", "https://")):
+                try:
+                    probe = ProbeRunner.probe_sync(media_path)
+                    has_audio = any(s.get("codec_type") == "audio" for s in probe.get("streams", []))
+                except Exception:
+                    has_audio = True
+
             if (
                 clip.type in ("video", "audio", "music")
                 and input_idx is not None
                 and not clip.isFrozen
                 and not clip.muted
                 and not track_muted
+                and has_audio
             ):
                 raw_a = context.generate_label("a_raw")
                 context.add_node(FilterNode(
                     filter_name="aformat",
-                    inputs=[f"{input_idx}:a?"],
+                    inputs=[f"{input_idx}:a"],
                     outputs=[raw_a],
                     args={"sample_fmts": "fltp", "sample_rates": "44100", "channel_layouts": "stereo"}
                 ))
@@ -283,16 +360,25 @@ class TimelineCompiler:
                 if composed_track_stream:
                     next_canvas = context.generate_label("canvas")
                     t_start = track_items[0][0].start
+                    composed_in = composed_track_stream.name
                     overlay_args = {
                         "x": "0",
                         "y": "0",
                         "eof_action": "pass"
                     }
                     if t_start > 0:
+                        trans_pts_label = context.generate_label("v_trans_pts")
+                        context.add_node(FilterNode(
+                            filter_name="setpts",
+                            inputs=[composed_track_stream.name],
+                            outputs=[trans_pts_label],
+                            args={"expr": f"PTS-STARTPTS+({t_start}/TB)"}
+                        ))
+                        composed_in = trans_pts_label
                         overlay_args["enable"] = f"'gte(t,{t_start})'"
                     context.add_node(FilterNode(
                         filter_name="overlay",
-                        inputs=[current_canvas, composed_track_stream.name],
+                        inputs=[current_canvas, composed_in],
                         outputs=[next_canvas],
                         args=overlay_args
                     ))
@@ -341,6 +427,51 @@ class TimelineCompiler:
                     y_pos = str(int((request.height - target_h) / 2))
                 else:
                     y_pos = str(int(clip.positionY))
+
+                # Motion / Positional effects displacement in overlay
+                eff_x_offset = []
+                eff_y_offset = []
+                for eff in (clip.effects or []):
+                    etype = eff.type.lower()
+                    p = eff.parameters or {}
+                    st = clip.start
+                    if etype == "move_left":
+                        dist = float(p.get("distance", 200.0))
+                        duration = float(p.get("duration", 0.8))
+                        eff_x_offset.append(f"{dist}*max(0,1-(t-{st})/{duration})")
+                    elif etype == "move_right":
+                        dist = float(p.get("distance", 200.0))
+                        duration = float(p.get("duration", 0.8))
+                        eff_x_offset.append(f"-{dist}*max(0,1-(t-{st})/{duration})")
+                    elif etype == "move_up":
+                        dist = float(p.get("distance", 200.0))
+                        duration = float(p.get("duration", 0.8))
+                        eff_y_offset.append(f"{dist}*max(0,1-(t-{st})/{duration})")
+                    elif etype == "move_down":
+                        dist = float(p.get("distance", 200.0))
+                        duration = float(p.get("duration", 0.8))
+                        eff_y_offset.append(f"-{dist}*max(0,1-(t-{st})/{duration})")
+                    elif etype == "drop":
+                        dist = float(p.get("distance", 300.0))
+                        speed = float(p.get("speed", 2.0))
+                        decay = float(p.get("bounce", 0.6))
+                        eff_y_offset.append(f"-{dist}*cos({speed}*(t-{st}))*exp(-{decay}*(t-{st}))")
+                    elif etype == "bounce":
+                        height = float(p.get("bounceHeight", 80.0))
+                        speed = float(p.get("speed", 2.5))
+                        decay = float(p.get("damping", 1.0))
+                        eff_y_offset.append(f"-{height}*abs(cos({speed}*(t-{st})))*exp(-{decay}*(t-{st}))")
+                    elif etype == "shake_in":
+                        strength = float(p.get("strength", 20.0))
+                        freq = float(p.get("frequency", 15.0))
+                        dur_shake = float(p.get("duration", 0.7))
+                        eff_x_offset.append(f"{strength}*sin((t-{st})*{freq})*max(0,1-(t-{st})/{dur_shake})")
+                        eff_y_offset.append(f"{strength}*cos((t-{st})*{freq}*1.2)*max(0,1-(t-{st})/{dur_shake})")
+
+                if eff_x_offset:
+                    x_pos = f"({x_pos})+" + "+".join(eff_x_offset)
+                if eff_y_offset:
+                    y_pos = f"({y_pos})+" + "+".join(eff_y_offset)
 
                 context.add_node(FilterNode(
                     filter_name="overlay",
@@ -397,6 +528,7 @@ class TimelineCompiler:
         cmd = [
             ffmpeg_bin,
             "-y",
+            "-nostdin",
             *input_args,
             "-filter_complex", filter_complex_str,
             *output_maps,

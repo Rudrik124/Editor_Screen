@@ -164,6 +164,8 @@ export interface ClipModel {
   layerIndex?: number;
   transition?: TransitionData;
   keyframes?: KeyframeData[];
+  effects?: Array<{ type: string; parameters?: Record<string, any> }>;
+  filters?: Array<{ type: string; intensity?: number }>;
   metadata?: Record<string, unknown>;
 }
 

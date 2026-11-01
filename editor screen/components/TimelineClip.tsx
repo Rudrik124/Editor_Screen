@@ -15,7 +15,7 @@ export function TimelineClip({
   selected = false,
   onSelect,
   onResize,
-  timelineDuration = 9.66,
+  timelineDuration = 5.05,
 }: {
   clip: TimelineClipData;
   selected?: boolean;

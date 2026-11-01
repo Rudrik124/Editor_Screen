@@ -20,6 +20,7 @@ from app.api.v1.health import router as health_router
 from app.api.v1.assets import router as assets_router
 from app.api.v1.timeline import router as timeline_router
 from app.api.v1.render import router as render_router
+from app.api.v1.captions import router as captions_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -59,6 +60,7 @@ app.include_router(health_router, prefix=settings.API_V1_STR)
 app.include_router(assets_router, prefix=settings.API_V1_STR)
 app.include_router(timeline_router, prefix=settings.API_V1_STR)
 app.include_router(render_router, prefix=settings.API_V1_STR)
+app.include_router(captions_router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 async def root():

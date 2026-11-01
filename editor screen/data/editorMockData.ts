@@ -1,6 +1,6 @@
 import { Track } from "../types/editor.types";
 
-export const timelineDuration = 9.66;
+export const timelineDuration = 5.05;
 
 export const timelineTracks: Track[] = [
   {

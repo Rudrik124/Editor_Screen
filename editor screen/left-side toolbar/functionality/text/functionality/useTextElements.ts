@@ -30,7 +30,7 @@ const defaultTextElement: TextElement = {
 };
 
 export function useTextElements() {
-  const [elements, setElements] = useState<TextElement[]>([defaultTextElement]);
+  const [elements, setElements] = useState<TextElement[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
 
   const add = () => {

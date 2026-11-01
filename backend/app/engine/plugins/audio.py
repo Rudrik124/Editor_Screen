@@ -71,7 +71,16 @@ class AudioPlugin(BasePipelinePlugin):
         if not streams:
             return None
         if len(streams) == 1:
-            return streams[0]
+            # BUG FIX (Phase 4): Re-normalize even a single stream through aformat to
+            # guarantee AAC encoder compatibility after atrim/atempo/volume filter chains.
+            norm_label = context.generate_label("a_master")
+            context.add_node(FilterNode(
+                filter_name="aformat",
+                inputs=[streams[0].name],
+                outputs=[norm_label],
+                args={"sample_fmts": "fltp", "sample_rates": "44100", "channel_layouts": "stereo"}
+            ))
+            return FilterStream(name=norm_label, stream_type="audio")
 
         out_label = context.generate_label("a_master")
         context.add_node(FilterNode(

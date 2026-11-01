@@ -22,7 +22,7 @@ export function TimelineTrack({
   selectedClipId,
   onSelectClip,
   onResizeClip,
-  timelineDuration = 9.66,
+  timelineDuration = 5.05,
 }: {
   track: Track;
   selectedClipId?: string;

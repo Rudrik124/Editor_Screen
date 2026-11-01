@@ -12,6 +12,9 @@ export interface LayerTransform {
   positionY?: number;
   rotation?: number;  // Radians
   opacity?: number;   // 0.0 to 1.0
+  filterType?: number;      // 0 = none, 1..20
+  filterIntensity?: number; // 0.0 to 1.0
+  time?: number;
 }
 
 export class WebGLRenderer {
@@ -27,6 +30,9 @@ export class WebGLRenderer {
   private layerRotLoc: WebGLUniformLocation | null = null;
   private layerOpacityLoc: WebGLUniformLocation | null = null;
   private layerImageLoc: WebGLUniformLocation | null = null;
+  private layerFilterTypeLoc: WebGLUniformLocation | null = null;
+  private layerFilterIntensityLoc: WebGLUniformLocation | null = null;
+  private layerTimeLoc: WebGLUniformLocation | null = null;
 
   // Transition program
   private transProgram: WebGLProgram | null = null;
@@ -79,6 +85,9 @@ export class WebGLRenderer {
       this.layerRotLoc = gl.getUniformLocation(this.layerProgram, "u_rotation");
       this.layerOpacityLoc = gl.getUniformLocation(this.layerProgram, "u_opacity");
       this.layerImageLoc = gl.getUniformLocation(this.layerProgram, "u_image");
+      this.layerFilterTypeLoc = gl.getUniformLocation(this.layerProgram, "u_filter_type");
+      this.layerFilterIntensityLoc = gl.getUniformLocation(this.layerProgram, "u_filter_intensity");
+      this.layerTimeLoc = gl.getUniformLocation(this.layerProgram, "u_time");
     }
 
     // 2. Transition Program (uses dedicated fullscreen quad vertex shader)
@@ -178,6 +187,9 @@ export class WebGLRenderer {
     gl.uniform2f(this.layerScaleLoc, scale, scale);
     gl.uniform1f(this.layerRotLoc, transform.rotation ?? 0.0);
     gl.uniform1f(this.layerOpacityLoc, transform.opacity ?? 1.0);
+    gl.uniform1i(this.layerFilterTypeLoc, transform.filterType ?? 0);
+    gl.uniform1f(this.layerFilterIntensityLoc, transform.filterIntensity ?? 1.0);
+    gl.uniform1f(this.layerTimeLoc, transform.time ?? 0.0);
 
     this.bindQuadAttributes(this.layerPosLoc, this.layerTexLoc);
     gl.drawArrays(gl.TRIANGLES, 0, 6);

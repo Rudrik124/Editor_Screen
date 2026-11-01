@@ -1,7 +1,10 @@
 from pathlib import Path
 from typing import List, Union
 from pydantic_settings import BaseSettings, SettingsConfigDict
-import imageio_ffmpeg
+try:
+    import imageio_ffmpeg
+except ImportError:
+    imageio_ffmpeg = None
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -90,10 +93,15 @@ class Settings(BaseSettings):
         for candidate in (self.FFMPEG_PATH, self.FFMPEG_BINARY):
             if candidate and Path(candidate).exists():
                 return candidate
-        try:
-            return imageio_ffmpeg.get_ffmpeg_exe()
-        except Exception:
-            return "ffmpeg"
+        local_bin = self.BASE_DIR / "bin" / "ffmpeg.exe"
+        if local_bin.exists():
+            return str(local_bin)
+        if imageio_ffmpeg is not None:
+            try:
+                return imageio_ffmpeg.get_ffmpeg_exe()
+            except Exception:
+                pass
+        return "ffmpeg"
 
     def setup_directories(self) -> None:
         """Ensure all storage folders exist."""

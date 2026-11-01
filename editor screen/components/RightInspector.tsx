@@ -25,6 +25,9 @@ import { ReverseProcessor } from "../plugins/reverse";
 import { FreezeProcessor } from "../plugins/freeze";
 import { CoverModal } from "../plugins/cover";
 import { AudioProcessor } from "../plugins/audio";
+import { Sparkle, Wind } from "@phosphor-icons/react";
+import { FiltersPanel } from "../plugins/filters/FiltersPanel";
+import { EffectsPanel } from "../plugins/effects/EffectsPanel";
 
 interface RightInspectorProps {
   selectedText?: TextElement;
@@ -32,7 +35,7 @@ interface RightInspectorProps {
   onDeleteText: (id: string) => void;
 }
 
-type ClipTab = "transform" | "speed" | "keyframes" | "audio";
+type ClipTab = "transform" | "speed" | "keyframes" | "audio" | "effects" | "filters";
 
 export function RightInspector({
   selectedText,
@@ -210,6 +213,22 @@ export function RightInspector({
               <SpeakerHigh size={14} weight="regular" />
               <span>Audio</span>
             </button>
+            <button
+              type="button"
+              className={`inspector-tab ${activeTab === "effects" ? "active" : ""}`}
+              onClick={() => setActiveTab("effects")}
+            >
+              <Wind size={14} weight="regular" />
+              <span>Effects</span>
+            </button>
+            <button
+              type="button"
+              className={`inspector-tab ${activeTab === "filters" ? "active" : ""}`}
+              onClick={() => setActiveTab("filters")}
+            >
+              <Sparkle size={14} weight="regular" />
+              <span>Filters</span>
+            </button>
           </div>
 
           <div className="inspector-body">
@@ -352,6 +371,20 @@ export function RightInspector({
                     {audioActionError}
                   </p>
                 )}
+              </div>
+            )}
+
+            {/* TAB: EFFECTS */}
+            {activeTab === "effects" && (
+              <div className="tab-section">
+                <EffectsPanel clipId={selectedClip.id} />
+              </div>
+            )}
+
+            {/* TAB: FILTERS */}
+            {activeTab === "filters" && (
+              <div className="tab-section">
+                <FiltersPanel clipId={selectedClip.id} />
               </div>
             )}
           </div>

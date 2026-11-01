@@ -28,6 +28,9 @@ import { AudioAsset, VideoAsset } from "../types/editor.types";
 import { useEditorStore } from "../store/editor.store";
 import { AspectRatio } from "../types/editor.types";
 import { TransitionModal } from "../plugins/transition";
+import { Wind } from "@phosphor-icons/react";
+import { FiltersPanel } from "../plugins/filters/FiltersPanel";
+import { EffectsPanel } from "../plugins/effects/EffectsPanel";
 import { SAMPLE_MEDIA } from "../data/sampleMedia";
 
 interface MediaLibraryProps {
@@ -40,7 +43,7 @@ interface MediaLibraryProps {
   onAddText?: () => void;
 }
 
-type NavTab = "media" | "audio" | "text" | "transitions" | "canvas";
+type NavTab = "media" | "audio" | "text" | "transitions" | "effects" | "filters" | "canvas";
 
 export function MediaLibrary({
   onMediaSelected,
@@ -137,6 +140,24 @@ export function MediaLibrary({
         >
           <Sparkle size={15} />
           <span>Transitions</span>
+        </button>
+        <button
+          type="button"
+          className={`library-tab ${activeTab === "effects" ? "active" : ""}`}
+          onClick={() => setActiveTab("effects")}
+          title="Visual animations and motion effects"
+        >
+          <Wind size={15} />
+          <span>Effects</span>
+        </button>
+        <button
+          type="button"
+          className={`library-tab ${activeTab === "filters" ? "active" : ""}`}
+          onClick={() => setActiveTab("filters")}
+          title="Color grading filters"
+        >
+          <Sparkle size={15} />
+          <span>Filters</span>
         </button>
         <button
           type="button"
@@ -436,6 +457,26 @@ export function MediaLibrary({
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* TAB: EFFECTS */}
+        {activeTab === "effects" && (
+          <div className="tab-pane effects-pane" style={{ padding: "16px" }}>
+            <div className="section-title" style={{ marginBottom: "12px", fontWeight: 600, fontSize: "13px" }}>
+              Visual Effects (20)
+            </div>
+            <EffectsPanel />
+          </div>
+        )}
+
+        {/* TAB: FILTERS */}
+        {activeTab === "filters" && (
+          <div className="tab-pane filters-pane" style={{ padding: "16px" }}>
+            <div className="section-title" style={{ marginBottom: "12px", fontWeight: 600, fontSize: "13px" }}>
+              Color Filters (20)
+            </div>
+            <FiltersPanel />
           </div>
         )}
 

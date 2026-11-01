@@ -28,11 +28,7 @@ export function VeytrixEditor() {
     url: string;
     type: "video" | "image";
     name: string;
-  } | null>({
-    url: DEFAULT_SAMPLE_MEDIA.url,
-    type: "video",
-    name: "Flower Sample",
-  });
+  } | null>(null);
   const [videoAssets, setVideoAssets] = useState<VideoAsset[]>([]);
   const [audioAssets, setAudioAssets] = useState<AudioAsset[]>([]);
   const [addedVideoIds, setAddedVideoIds] = useState<string[]>([]);
@@ -86,11 +82,36 @@ export function VeytrixEditor() {
   }, [selectedClipId, clips]);
 
   const addAssetClipToStore = (asset: VideoAsset) => {
-    const videoTrack = useEditorStore
+    const storeState = useEditorStore.getState();
+    const videoTrack = storeState.tracks.find((t) => t.id === "video");
+    const isInitialSampleOnly =
+      videoTrack &&
+      videoTrack.clipIds.length === 1 &&
+      videoTrack.clipIds[0] === "video-sample-clip";
+
+    // When importing the first user video, replace the placeholder sample clip to avoid blank gaps
+    if (isInitialSampleOnly) {
+      dispatch({
+        id: `del-sample-${Date.now()}`,
+        type: "DELETE_CLIP",
+        payload: { clipId: "video-sample-clip", trackId: "video" },
+        timestamp: Date.now(),
+      });
+      if (storeState.clips["audio-sample-clip"]) {
+        dispatch({
+          id: `del-sample-audio-${Date.now()}`,
+          type: "DELETE_CLIP",
+          payload: { clipId: "audio-sample-clip", trackId: "audio" },
+          timestamp: Date.now(),
+        });
+      }
+    }
+
+    const currentTrack = useEditorStore
       .getState()
       .tracks.find((t) => t.id === "video");
-    const existingClips = videoTrack
-      ? videoTrack.clipIds
+    const existingClips = currentTrack
+      ? currentTrack.clipIds
           .map((id) => useEditorStore.getState().clips[id])
           .filter(Boolean)
       : [];
@@ -144,10 +165,45 @@ export function VeytrixEditor() {
       return false;
     }
 
-    const start = audioTrack.clipIds.reduce((end, clipId) => {
-      const clip = state.clips[clipId];
-      return clip ? Math.max(end, clip.start + clip.duration) : end;
-    }, 0);
+    // If audio track only contains the placeholder sample audio clip, remove it first
+    if (
+      audioTrack.clipIds.length === 1 &&
+      audioTrack.clipIds[0] === "audio-sample-clip"
+    ) {
+      dispatch({
+        id: `del-sample-audio-${Date.now()}`,
+        type: "DELETE_CLIP",
+        payload: { clipId: "audio-sample-clip", trackId: audioTrack.id },
+        timestamp: Date.now(),
+      });
+    }
+
+    const currentTrack = useEditorStore
+      .getState()
+      .tracks.find((t) => t.id === audioTrack.id);
+    const start = currentTrack
+      ? currentTrack.clipIds.reduce((end, clipId) => {
+          const clip = useEditorStore.getState().clips[clipId];
+          return clip ? Math.max(end, clip.start + clip.duration) : end;
+        }, 0)
+      : 0;
+
+    // Check maximum end time of video clips on the timeline
+    const allClips = Object.values(useEditorStore.getState().clips);
+    const videoClips = allClips.filter(
+      (c) => c.type === "video" || c.mediaType === "image"
+    );
+    const maxVideoEnd = videoClips.reduce(
+      (max, c) => Math.max(max, c.start + c.duration),
+      0
+    );
+
+    // If audio length exceeds video length, automatically trim down to video end
+    let clipDuration = asset.duration;
+    if (maxVideoEnd > 0 && start < maxVideoEnd && start + asset.duration > maxVideoEnd) {
+      clipDuration = Math.max(0.1, maxVideoEnd - start);
+    }
+
     const clip: ClipModel = {
       id: `audio-${asset.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       trackId: audioTrack.id,
@@ -155,7 +211,7 @@ export function VeytrixEditor() {
       type: "audio",
       mediaType: "audio",
       start,
-      duration: asset.duration,
+      duration: clipDuration,
       color: "#1e3a8a",
       mediaUrl: asset.url,
       renderMediaUrl: asset.renderUrl,
@@ -163,7 +219,7 @@ export function VeytrixEditor() {
       volume: 1,
       muted: false,
       inPoint: 0,
-      outPoint: asset.duration,
+      outPoint: clipDuration,
       baseDuration: asset.duration,
     };
     const added = dispatch({

@@ -37,13 +37,50 @@ export function TimelineWorkspace({
   const timelineMainRef = useRef<HTMLDivElement>(null);
 
   // Calculate timeline duration from active clips
+  const videoClips = Object.values(storeClips).filter(
+    (c) => c.type === "video" || c.mediaType === "image"
+  );
+  const maxVideoEnd = videoClips.reduce(
+    (max, c) => Math.max(max, c.start + c.duration),
+    0
+  );
   const clipEnds = Object.values(storeClips).map((clip) => clip.start + clip.duration);
   const hasClips = clipEnds.length > 0;
-  const timelineDuration = Math.max(9.66, ...clipEnds, 0);
+  // If video clips exist and audio length is more than video length, trim timeline duration to video end
+  const timelineDuration = maxVideoEnd > 0
+    ? maxVideoEnd
+    : (hasClips ? Math.max(...clipEnds, 0.1) : 0);
 
   useEffect(() => {
     setDuration(hasClips ? timelineDuration : 0);
   }, [hasClips, timelineDuration, setDuration]);
+
+  // Automatically trim any audio clips extending past video end
+  useEffect(() => {
+    if (maxVideoEnd > 0) {
+      const audioToTrim = Object.values(storeClips).filter(
+        (c) =>
+          (c.type === "audio" || c.type === "music") &&
+          c.start < maxVideoEnd &&
+          c.start + c.duration > maxVideoEnd + 0.05
+      );
+      if (audioToTrim.length > 0) {
+        audioToTrim.forEach((c) => {
+          const trimmedDur = Math.max(0.1, maxVideoEnd - c.start);
+          useEditorStore.getState().dispatch({
+            id: `auto-trim-audio-${Date.now()}-${c.id}`,
+            type: "TRIM_CLIP",
+            payload: {
+              clipId: c.id,
+              edge: "right",
+              newTime: c.start + trimmedDur,
+            },
+            timestamp: Date.now(),
+          });
+        });
+      }
+    }
+  }, [maxVideoEnd, storeClips]);
 
   // Generate dynamic ruler ticks spanning the actual duration
   const rulerTicks = useMemo(() => {

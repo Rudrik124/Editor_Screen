@@ -126,6 +126,9 @@ export function handleExtractAudio(
     volume: 1,
     muted: false,
     locked: false,
+    // BUG FIX (Phase 4): server-readable path for FFmpeg audio extraction.
+    // sourceClip.mediaUrl may be a blob:// URL the backend cannot access.
+    renderMediaUrl: sourceClip.renderMediaUrl ?? sourceClip.mediaUrl,
   };
 
   const insertIndex = audioTrack.clipIds.length;

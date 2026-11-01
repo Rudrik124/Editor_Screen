@@ -10,7 +10,7 @@ def create_video_with_audio(path):
     subprocess.run(
         [
             settings.get_ffmpeg_path(),
-            "-y",
+            "-y", "-nostdin",
             "-f", "lavfi", "-i", "testsrc=duration=2:size=320x240:rate=24",
             "-f", "lavfi", "-i", "sine=frequency=880:duration=2",
             "-c:v", "libx264",
@@ -19,6 +19,7 @@ def create_video_with_audio(path):
             str(path),
         ],
         check=True,
+        stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -28,12 +29,13 @@ def create_music_audio(path):
     subprocess.run(
         [
             settings.get_ffmpeg_path(),
-            "-y",
+            "-y", "-nostdin",
             "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
             "-c:a", "pcm_s16le",
             str(path),
         ],
         check=True,
+        stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -69,12 +71,12 @@ def test_muted_video_audio_is_skipped_without_removing_video(tmp_path):
     assert "scale=" in filter_graph
     assert "aformat=" not in filter_graph
 
-    result = subprocess.run(command, capture_output=True, text=True)
+    result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
 
     import asyncio
 
-    probe = asyncio.run(ProbeRunner.probe(str(output)))
+    probe = ProbeRunner.probe_sync(str(output))
     assert any(stream["codec_type"] == "video" for stream in probe["streams"])
 
 
@@ -150,11 +152,11 @@ def test_mixed_video_and_music_audio_exports(tmp_path):
     filter_graph = command[command.index("-filter_complex") + 1]
     assert "amix=inputs=2" in filter_graph
 
-    result = subprocess.run(command, capture_output=True, text=True)
+    result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     import asyncio
 
-    probe = asyncio.run(ProbeRunner.probe(str(output)))
+    probe = ProbeRunner.probe_sync(str(output))
     stream_types = [stream["codec_type"] for stream in probe["streams"]]
     assert "video" in stream_types
     assert "audio" in stream_types
@@ -202,20 +204,20 @@ def test_audio_after_timeline_gap_is_audible_in_export(tmp_path):
     command, duration = TimelineCompiler().compile(request, str(output))
     assert duration == 7
 
-    result = subprocess.run(command, capture_output=True, text=True)
+    result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
 
     import asyncio
     import math
     import struct
 
-    probe = asyncio.run(ProbeRunner.probe(str(output)))
+    probe = ProbeRunner.probe_sync(str(output))
     assert float(probe["format"]["duration"]) >= 6.9
 
     decoded = subprocess.run(
         [
             settings.get_ffmpeg_path(),
-            "-v", "error",
+            "-nostdin", "-v", "error",
             "-ss", "5.25",
             "-i", str(output),
             "-t", "1",
@@ -226,7 +228,7 @@ def test_audio_after_timeline_gap_is_audible_in_export(tmp_path):
             "pipe:1",
         ],
         check=True,
-        capture_output=True,
+        stdin=subprocess.DEVNULL, capture_output=True,
     )
     samples = struct.unpack(
         f"<{len(decoded.stdout) // 2}h",
@@ -300,7 +302,7 @@ def test_uploaded_audio_is_audible_in_export(tmp_path, monkeypatch):
     )
 
     command, _ = TimelineCompiler().compile(request, str(output))
-    result = subprocess.run(command, capture_output=True, text=True)
+    result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
 
     import math
@@ -309,7 +311,7 @@ def test_uploaded_audio_is_audible_in_export(tmp_path, monkeypatch):
     decoded = subprocess.run(
         [
             settings.get_ffmpeg_path(),
-            "-v", "error",
+            "-nostdin", "-v", "error",
             "-i", str(output),
             "-t", "1",
             "-map", "0:a:0",
@@ -319,7 +321,7 @@ def test_uploaded_audio_is_audible_in_export(tmp_path, monkeypatch):
             "pipe:1",
         ],
         check=True,
-        capture_output=True,
+        stdin=subprocess.DEVNULL, capture_output=True,
     )
     samples = struct.unpack(
         f"<{len(decoded.stdout) // 2}h",

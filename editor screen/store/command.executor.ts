@@ -40,6 +40,11 @@ import {
   handleMuteTrack,
 } from "./audio.mutations";
 
+import {
+  handleSetFilters,
+  handleSetEffects,
+} from "./phase5.mutations";
+
 export { sanitizeClipName };
 export type { TimelineStateSlice };
 
@@ -108,6 +113,10 @@ export function executeCommandMutation(
       return handleMuteClip(state, command);
     case "MUTE_TRACK":
       return handleMuteTrack(state, command);
+    case "SET_FILTERS":
+      return handleSetFilters(state, command);
+    case "SET_EFFECTS":
+      return handleSetEffects(state, command);
     default:
       console.warn(`Unknown command type: ${type}`);
       return null;

@@ -87,3 +87,4 @@ website/.i18n-*/
 # Backend local storage & media files (uploads, exports, temp frames)
 backend/storage/
 storage/
+Scratch/

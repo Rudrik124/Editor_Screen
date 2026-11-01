@@ -39,45 +39,13 @@ export interface EditorStoreState {
 }
 
 const defaultTracks: TrackModel[] = [
-  { id: "text", label: "Text", type: "text", clipIds: ["text-sample-clip"] },
+  { id: "text", label: "Text", type: "text", clipIds: [] },
   { id: "overlay-clip", label: "Overlay", type: "video", clipIds: [] },
-  { id: "video", label: "Video", type: "video", clipIds: ["video-sample-clip"] },
-  { id: "audio", label: "Audio Track", type: "audio", clipIds: ["audio-sample-clip"], muted: false },
+  { id: "video", label: "Video", type: "video", clipIds: [] },
+  { id: "audio", label: "Audio Track", type: "audio", clipIds: [], muted: false },
 ];
 
-const defaultClips: Record<string, ClipModel> = {
-  "text-sample-clip": {
-    id: "text-sample-clip",
-    trackId: "text",
-    name: "Summer Adventure",
-    type: "text",
-    start: 0.5,
-    duration: 4.0,
-    color: "#0f766e",
-  },
-  "video-sample-clip": {
-    id: "video-sample-clip",
-    trackId: "video",
-    name: "Flower Sample",
-    type: "video",
-    start: 0,
-    duration: 9.66,
-    color: "#1e293b",
-    mediaUrl: DEFAULT_SAMPLE_MEDIA.url,
-    renderMediaUrl: DEFAULT_SAMPLE_MEDIA.url,
-  },
-  "audio-sample-clip": {
-    id: "audio-sample-clip",
-    trackId: "audio",
-    name: "Cinematic Horizon",
-    type: "audio",
-    start: 0,
-    duration: 9.66,
-    color: "#1e3a8a",
-    volume: 1,
-    muted: false,
-  },
-};
+const defaultClips: Record<string, ClipModel> = {};
 
 export const useEditorStore = create<EditorStoreState>((set, get) => ({
   tracks: defaultTracks,
@@ -86,7 +54,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
   selectedTrackId: null,
   currentTime: 0,
   seekRevision: 0,
-  duration: 9.66,
+  duration: 0,
   isPlaying: false,
   aspectRatio: "16:9",
   coverUrl: null,

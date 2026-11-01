@@ -21,7 +21,17 @@ class FilterNode:
         """Formats into FFmpeg filter syntax: [in1][in2]name=k1=v1:k2=v2[out1]"""
         in_str = "".join(f"[{i}]" for i in self.inputs)
         out_str = "".join(f"[{o}]" for o in self.outputs)
-        args_str = ":".join(f"{k}={v}" if v is not None else str(k) for k, v in self.args.items())
+        parts = []
+        for k, v in self.args.items():
+            if v is None:
+                parts.append(str(k))
+            else:
+                val = str(v)
+                # Wrap values with commas, spaces, or parentheses in single quotes if not already quoted
+                if ("," in val or " " in val or "(" in val) and not (val.startswith("'") and val.endswith("'")):
+                    val = f"'{val}'"
+                parts.append(f"{k}={val}")
+        args_str = ":".join(parts)
         if args_str:
             return f"{in_str}{self.filter_name}={args_str}{out_str}"
         return f"{in_str}{self.filter_name}{out_str}"

@@ -29,7 +29,9 @@ export type CommandType =
   | "RESTORE_EXTRACT_AUDIO"
   | "SET_AUDIO_VOLUME"
   | "MUTE_CLIP"
-  | "MUTE_TRACK";
+  | "MUTE_TRACK"
+  | "SET_FILTERS"
+  | "SET_EFFECTS";
 
 export interface EditorCommand {
   id: string;

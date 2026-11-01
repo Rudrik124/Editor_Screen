@@ -2,7 +2,7 @@ import { ClipModel, TrackModel } from "../types/editor.types";
 import { getAudioPlaybackRate } from "../utils/audioTimeline";
 
 const RAW_API_URL = (import.meta.env.VITE_API_URL as string | undefined) || "http://localhost:8000";
-const API_BASE = `${RAW_API_URL.replace(/\/+$/, "")}/api/v1`;
+export const API_BASE = `${RAW_API_URL.replace(/\/+$/, "")}/api/v1`;
 const WS_BASE = `${RAW_API_URL.replace(/\/+$/, "").replace(/^http/, "ws")}/api/v1`;
 
 export interface UploadedAssetResponse {
@@ -114,10 +114,34 @@ export async function submitTimelineRender(
     locked: !!t.locked,
   }));
 
+  const videoClips = clipList.filter(
+    (c) => c.type === "video" || c.mediaType === "image"
+  );
+  const maxVideoEnd = videoClips.reduce(
+    (max, c) => Math.max(max, c.start + c.duration),
+    0
+  );
+  const preparedClips = (maxVideoEnd > 0
+    ? clipList
+        .filter((c) => (c.type !== "audio" && c.type !== "music") || c.start < maxVideoEnd)
+        .map((c) => {
+          if ((c.type === "audio" || c.type === "music") && c.start + c.duration > maxVideoEnd) {
+            const trimmedDur = Math.max(0.1, maxVideoEnd - c.start);
+            return {
+              ...c,
+              duration: trimmedDur,
+              outPoint: (c.inPoint || 0) + trimmedDur,
+            };
+          }
+          return c;
+        })
+    : clipList
+  );
+
   const payload = {
     projectId,
     tracks: trackList,
-    clips: clipList.map((c) => ({
+    clips: preparedClips.map((c) => ({
       id: c.id,
       trackId: c.trackId,
       name: c.name,
@@ -126,7 +150,9 @@ export async function submitTimelineRender(
       duration: c.duration,
       inPoint: c.inPoint || 0.0,
       outPoint: c.outPoint,
-      mediaUrl: c.renderMediaUrl || c.mediaUrl,
+      // BUG FIX (Phase 4): renderMediaUrl is the server-readable path; mediaUrl may be a blob:// URL.
+      // For extracted audio clips, renderMediaUrl is now explicitly populated (audio.mutations.ts fix).
+      mediaUrl: c.renderMediaUrl || c.mediaUrl || null,
       assetId: c.assetId,
       speed:
         c.type === "audio" || c.type === "music"
@@ -152,6 +178,8 @@ export async function submitTimelineRender(
       positionX: c.positionX ?? 0.0,
       positionY: c.positionY ?? 0.0,
       rotation: c.rotation ?? 0.0,
+      filters: c.filters || [],
+      effects: c.effects || [],
     })),
     fps: settings.fps,
     width: settings.resolution.width,

@@ -1,4 +1,5 @@
 import { transitionsGLSL } from "./transitions.glsl";
+import { filterShadersGLSL } from "./filters.glsl";
 
 export const layerVertexShaderSource = `
   attribute vec2 a_position;
@@ -39,10 +40,16 @@ export const layerFragmentShaderSource = `
   varying vec2 v_texCoord;
   uniform sampler2D u_image;
   uniform float u_opacity;
+  uniform int u_filter_type;
+  uniform float u_filter_intensity;
+  uniform float u_time;
+
+  ${filterShadersGLSL}
 
   void main() {
     vec4 color = texture2D(u_image, v_texCoord);
-    gl_FragColor = vec4(color.rgb, u_opacity);
+    vec4 filtered = applyColorFilter(u_filter_type, v_texCoord, color, u_filter_intensity, u_time);
+    gl_FragColor = vec4(filtered.rgb, filtered.a * u_opacity);
   }
 `;
 

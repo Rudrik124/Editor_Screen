@@ -10,9 +10,11 @@ import {
 import { formatVideoTime } from "./utils/formatVideoTime";
 import { TextElement } from "../left-side toolbar/functionality/text/functionality/text.types";
 import { useEditorStore } from "../store/editor.store";
-import { WebGLRenderer } from "../renderer/webgl.renderer";
+import { WebGLRenderer, LayerTransform } from "../renderer/webgl.renderer";
 import { AudioEngine } from "../renderer/audio.engine";
 import { evaluateClipTransforms } from "../renderer/keyframe.interpolator";
+import { evaluateClipEffectTransforms } from "../renderer/effect.interpolator";
+import { FILTER_INDEX_MAP } from "../plugins/filters/filters.catalog";
 import { RatioProcessor, RatioSelector } from "../plugins/ratio";
 import { CoverModal } from "../plugins/cover";
 import { ClipModel } from "../types/editor.types";
@@ -77,6 +79,24 @@ export function PreviewWorkspace({
   const setIsPlaying = useEditorStore((state) => state.setIsPlaying);
   const aspectRatio = useEditorStore((state) => state.aspectRatio);
 
+
+
+  
+function resolveClipLayerTransform(clip: ClipModel, localTime: number): LayerTransform {
+  const baseTf = evaluateClipTransforms(clip, localTime);
+  const effectTf: LayerTransform = clip.effects && clip.effects.length > 0
+    ? evaluateClipEffectTransforms(clip.effects, localTime, clip.duration, baseTf)
+    : { ...baseTf };
+
+  if (clip.filters && clip.filters.length > 0) {
+    const activeFilter = clip.filters[0];
+    effectTf.filterType = FILTER_INDEX_MAP[activeFilter.type] ?? 0;
+    effectTf.filterIntensity = activeFilter.intensity ?? 1.0;
+  }
+  effectTf.time = localTime;
+  return effectTf;
+}
+
   // 1. Resolve active clips
   const {
     activeVideoClip,
@@ -108,52 +128,63 @@ export function PreviewWorkspace({
     []
   );
 
-  // 2. WebGL Paint Routine
-  const renderFrame = useCallback(() => {
+  // 2. WebGL Paint Routine (supports sub-frame animation interpolation at 60 FPS)
+  const renderFrame = useCallback((optTime?: number | unknown) => {
     const renderer = rendererRef.current;
     if (!renderer) return;
+
+    const curTime = typeof optTime === "number" ? optTime : useEditorStore.getState().currentTime;
+    const curTracks = useEditorStore.getState().tracks;
+    const curClips = useEditorStore.getState().clips;
+    const {
+      activeVideoClip: curActiveClip,
+      activeClipIndex: curActiveIndex,
+      nextVideoClip: curNextClip,
+      transitionInfo: curTransInfo,
+      activeOverlayClip: curActiveOverlay,
+    } = resolveActiveClips(curTracks, curClips, curTime);
 
     renderer.clear(0.04, 0.05, 0.07, 1.0);
 
     // 2A. Render transition if active
-    if (transitionInfo && activeVideoClip && nextVideoClip) {
-      const outgoingSlot = activeClipIndex % 2 === 0 ? "A" : "B";
-      const incomingSlot = activeClipIndex % 2 === 0 ? "B" : "A";
-      const src1 = getSlotSource(outgoingSlot, activeVideoClip);
-      const src2 = getSlotSource(incomingSlot, nextVideoClip);
+    if (curTransInfo && curActiveClip && curNextClip) {
+      const outgoingSlot = curActiveIndex % 2 === 0 ? "A" : "B";
+      const incomingSlot = curActiveIndex % 2 === 0 ? "B" : "A";
+      const src1 = getSlotSource(outgoingSlot, curActiveClip);
+      const src2 = getSlotSource(incomingSlot, curNextClip);
 
       if (src1 && src2) {
-        const dipRgb = parseHexColor(transitionInfo.color);
+        const dipRgb = parseHexColor(curTransInfo.color);
         renderer.renderTransition(
           src1,
           src2,
-          transitionInfo.typeIndex,
-          transitionInfo.progress,
+          curTransInfo.typeIndex,
+          curTransInfo.progress,
           dipRgb
         );
       } else if (src1) {
-        const local = Math.max(0, storeCurrentTime - activeVideoClip.start);
-        const tf = evaluateClipTransforms(activeVideoClip, local);
+        const local = Math.max(0, curTime - curActiveClip.start);
+        const tf = resolveClipLayerTransform(curActiveClip, local);
         renderer.renderLayer(src1, tf);
       } else if (src2) {
-        const local = Math.max(0, storeCurrentTime - nextVideoClip.start);
-        const tf = evaluateClipTransforms(nextVideoClip, local);
+        const local = Math.max(0, curTime - curNextClip.start);
+        const tf = resolveClipLayerTransform(curNextClip, local);
         renderer.renderLayer(src2, tf);
       }
-    } else if (activeVideoClip && activeClipIndex !== -1) {
+    } else if (curActiveClip && curActiveIndex !== -1) {
       // 2B. Normal single-layer playback: read active slot
-      const activeSlot = activeClipIndex % 2 === 0 ? "A" : "B";
-      let src = getSlotSource(activeSlot, activeVideoClip);
+      const activeSlot = curActiveIndex % 2 === 0 ? "A" : "B";
+      let src = getSlotSource(activeSlot, curActiveClip);
 
       // Fallback: If active slot is still switching, check if other slot has this clip ready
       if (!src) {
         const otherSlot = activeSlot === "A" ? "B" : "A";
-        src = getSlotSource(otherSlot, activeVideoClip);
+        src = getSlotSource(otherSlot, curActiveClip);
       }
 
       if (src) {
-        const local = Math.max(0, storeCurrentTime - activeVideoClip.start);
-        const tf = evaluateClipTransforms(activeVideoClip, local);
+        const local = Math.max(0, curTime - curActiveClip.start);
+        const tf = resolveClipLayerTransform(curActiveClip, local);
         renderer.renderLayer(src, tf);
       }
     } else {
@@ -161,10 +192,10 @@ export function PreviewWorkspace({
     }
 
     // 2C. Render overlay (PIP) layer
-    if (activeOverlayClip && activeOverlayClip.mediaUrl) {
+    if (curActiveOverlay && curActiveOverlay.mediaUrl) {
       const isOverlayImg =
-        activeOverlayClip.mediaType === "image" ||
-        isImageMedia(activeOverlayClip.mediaUrl, activeOverlayClip.name);
+        curActiveOverlay.mediaType === "image" ||
+        isImageMedia(curActiveOverlay.mediaUrl, curActiveOverlay.name);
       const vo = videoOverlayRef.current;
       const imgo = imageOverlayRef.current;
       const srcOverlay: TexImageSource | null = isOverlayImg
@@ -176,20 +207,12 @@ export function PreviewWorkspace({
         : null;
 
       if (srcOverlay) {
-        const local = Math.max(0, storeCurrentTime - activeOverlayClip.start);
-        const tf = evaluateClipTransforms(activeOverlayClip, local);
+        const local = Math.max(0, curTime - curActiveOverlay.start);
+        const tf = resolveClipLayerTransform(curActiveOverlay, local);
         renderer.renderLayer(srcOverlay, tf);
       }
     }
-  }, [
-    activeVideoClip,
-    activeClipIndex,
-    nextVideoClip,
-    activeOverlayClip,
-    transitionInfo,
-    storeCurrentTime,
-    getSlotSource,
-  ]);
+  }, [getSlotSource]);
 
   // Callback ref to reliably bind WebGLRenderer whenever <canvas> is mounted in the DOM
   const initRenderer = useCallback(
@@ -274,7 +297,7 @@ export function PreviewWorkspace({
       }
 
       state.setCurrentTime(nextTime, false);
-      renderFrameRef.current();
+      renderFrameRef.current(nextTime);
       animId = requestAnimationFrame(tick);
     };
 
