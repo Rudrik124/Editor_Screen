@@ -96,10 +96,17 @@ export function resolveActiveClips(
       activeClipIndex = exactIndex;
       nextVideoClip = exactIndex < videoClips.length - 1 ? videoClips[exactIndex + 1] : null;
     } else {
-      // In a gap or outside clips
-      activeVideoClip = null;
-      activeClipIndex = -1;
-      nextVideoClip = videoClips.find((c) => c.start > currentTime) || null;
+      // In a gap or outside clips: if at or slightly past the last frame, hold the last clip
+      const lastClip = videoClips[videoClips.length - 1];
+      if (lastClip && currentTime >= lastClip.start + lastClip.duration && currentTime <= lastClip.start + lastClip.duration + 0.2) {
+        activeVideoClip = lastClip;
+        activeClipIndex = videoClips.length - 1;
+        nextVideoClip = null;
+      } else {
+        activeVideoClip = null;
+        activeClipIndex = -1;
+        nextVideoClip = videoClips.find((c) => c.start > currentTime) || null;
+      }
     }
   }
 

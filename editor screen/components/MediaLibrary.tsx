@@ -30,6 +30,8 @@ import { AspectRatio } from "../types/editor.types";
 import { TransitionModal } from "../plugins/transition";
 import { Wind } from "@phosphor-icons/react";
 import { FiltersPanel } from "../plugins/filters/FiltersPanel";
+import { CaptionsPanel } from "../plugins/caption/CaptionsPanel";
+import { ClosedCaptioning } from "@phosphor-icons/react";
 import { EffectsPanel } from "../plugins/effects/EffectsPanel";
 import { SAMPLE_MEDIA } from "../data/sampleMedia";
 
@@ -43,7 +45,7 @@ interface MediaLibraryProps {
   onAddText?: () => void;
 }
 
-type NavTab = "media" | "audio" | "text" | "transitions" | "effects" | "filters" | "canvas";
+type NavTab = "media" | "audio" | "text" | "transitions" | "effects" | "filters" | "captions" | "canvas";
 
 export function MediaLibrary({
   onMediaSelected,
@@ -477,6 +479,16 @@ export function MediaLibrary({
               Color Filters (20)
             </div>
             <FiltersPanel />
+          </div>
+        )}
+
+        {/* TAB: CAPTIONS */}
+        {activeTab === "captions" && (
+          <div className="tab-pane captions-pane" style={{ padding: "16px" }}>
+            <div className="section-title" style={{ marginBottom: "12px", fontWeight: 600, fontSize: "13px" }}>
+              Auto Subtitles & Captions
+            </div>
+            <CaptionsPanel />
           </div>
         )}
 

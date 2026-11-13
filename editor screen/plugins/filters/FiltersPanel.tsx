@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { SlidersHorizontal, Trash, Sparkle, Check } from "@phosphor-icons/react";
 import { useEditorStore } from "../../store/editor.store";
 import { commandBus } from "../../store/command.bus";
 import { FILTER_CATALOG } from "./filters.catalog";
+import { resolveActiveClips } from "../../components/utils/previewResolver";
 import "./filters.ui.css";
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -17,8 +18,17 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 export function FiltersPanel({ clipId }: { clipId?: string }) {
-  const selectedClipId = useEditorStore((state) => clipId || state.selectedClipId);
-  const clip = useEditorStore((state) => (selectedClipId ? state.clips[selectedClipId] : null));
+  const storeTracks = useEditorStore((state) => state.tracks);
+  const storeClips = useEditorStore((state) => state.clips);
+  const storeCurrentTime = useEditorStore((state) => state.currentTime);
+  const storeSelectedClipId = useEditorStore((state) => state.selectedClipId);
+
+  const activeClipUnderPlayhead = useMemo(() => {
+    return resolveActiveClips(storeTracks, storeClips, storeCurrentTime).activeVideoClip;
+  }, [storeTracks, storeClips, storeCurrentTime]);
+
+  const targetClipId = clipId || storeSelectedClipId || activeClipUnderPlayhead?.id || null;
+  const clip = targetClipId ? storeClips[targetClipId] : null;
 
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
 
@@ -32,25 +42,28 @@ export function FiltersPanel({ clipId }: { clipId?: string }) {
   const activeIntensity = activeFilter?.intensity ?? 1.0;
 
   const handleApplyFilter = (filterId: string) => {
-    if (!selectedClipId) return;
+    if (!targetClipId) return;
+    if (storeSelectedClipId !== targetClipId) {
+      useEditorStore.getState().selectClip(targetClipId);
+    }
     commandBus.createAndDispatch("SET_FILTERS", {
-      clipId: selectedClipId,
+      clipId: targetClipId,
       filters: [{ type: filterId, intensity: activeIntensity }],
     });
   };
 
   const handleIntensityChange = (val: number) => {
-    if (!selectedClipId || !activeFilter) return;
+    if (!targetClipId || !activeFilter) return;
     commandBus.createAndDispatch("SET_FILTERS", {
-      clipId: selectedClipId,
+      clipId: targetClipId,
       filters: [{ type: activeFilter.type, intensity: val }],
     });
   };
 
   const handleRemoveFilter = () => {
-    if (!selectedClipId) return;
+    if (!targetClipId) return;
     commandBus.createAndDispatch("SET_FILTERS", {
-      clipId: selectedClipId,
+      clipId: targetClipId,
       filters: [],
     });
   };

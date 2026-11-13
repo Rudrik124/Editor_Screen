@@ -243,6 +243,13 @@ function resolveClipLayerTransform(clip: ClipModel, localTime: number): LayerTra
     renderFrame();
   }, [activeMediaUrl, aspectRatio, renderFrame]);
 
+  // Repaint canvas immediately whenever clips change (filters, effects, transforms) while paused
+  useEffect(() => {
+    if (!isPlaying) {
+      renderFrame(useEditorStore.getState().currentTime);
+    }
+  }, [storeClips, isPlaying, renderFrame]);
+
   useEffect(() => {
     return () => {
       rendererRef.current?.destroy();
@@ -292,7 +299,8 @@ function resolveClipLayerTransform(clip: ClipModel, localTime: number): LayerTra
 
       if (nextTime >= state.duration) {
         state.setIsPlaying(false);
-        state.setCurrentTime(0, false);
+        state.setCurrentTime(0, true);
+        renderFrameRef.current(0);
         return;
       }
 

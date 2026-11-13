@@ -1,29 +1,42 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { Wind, Trash, Play, Check } from "@phosphor-icons/react";
 import { useEditorStore } from "../../store/editor.store";
 import { commandBus } from "../../store/command.bus";
 import { EFFECT_CATALOG } from "./effects.catalog";
+import { resolveActiveClips } from "../../components/utils/previewResolver";
 import "../filters/filters.ui.css";
 
 export function EffectsPanel({ clipId }: { clipId?: string }) {
-  const selectedClipId = useEditorStore((state) => clipId || state.selectedClipId);
-  const clip = useEditorStore((state) => (selectedClipId ? state.clips[selectedClipId] : null));
+  const storeTracks = useEditorStore((state) => state.tracks);
+  const storeClips = useEditorStore((state) => state.clips);
+  const storeCurrentTime = useEditorStore((state) => state.currentTime);
+  const storeSelectedClipId = useEditorStore((state) => state.selectedClipId);
+
+  const activeClipUnderPlayhead = useMemo(() => {
+    return resolveActiveClips(storeTracks, storeClips, storeCurrentTime).activeVideoClip;
+  }, [storeTracks, storeClips, storeCurrentTime]);
+
+  const targetClipId = clipId || storeSelectedClipId || activeClipUnderPlayhead?.id || null;
+  const clip = targetClipId ? storeClips[targetClipId] : null;
 
   const activeEffect = clip?.effects?.[0];
 
   const handleApplyEffect = (effId: string) => {
-    if (!selectedClipId) return;
+    if (!targetClipId) return;
+    if (storeSelectedClipId !== targetClipId) {
+      useEditorStore.getState().selectClip(targetClipId);
+    }
     const def = EFFECT_CATALOG.find((e) => e.id === effId);
     commandBus.createAndDispatch("SET_EFFECTS", {
-      clipId: selectedClipId,
+      clipId: targetClipId,
       effects: [{ type: effId, parameters: { ...(def?.defaultParams || {}) } }],
     });
   };
 
   const handleRemoveEffect = () => {
-    if (!selectedClipId) return;
+    if (!targetClipId) return;
     commandBus.createAndDispatch("SET_EFFECTS", {
-      clipId: selectedClipId,
+      clipId: targetClipId,
       effects: [],
     });
   };

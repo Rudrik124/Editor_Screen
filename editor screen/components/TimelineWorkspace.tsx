@@ -161,6 +161,8 @@ export function TimelineWorkspace({
         inPoint: c.inPoint,
         outPoint: c.outPoint,
         muted: c.muted,
+        filters: c.filters,
+        effects: c.effects,
       }));
 
     return {

@@ -27,6 +27,8 @@ import { CoverModal } from "../plugins/cover";
 import { AudioProcessor } from "../plugins/audio";
 import { Sparkle, Wind } from "@phosphor-icons/react";
 import { FiltersPanel } from "../plugins/filters/FiltersPanel";
+import { CaptionsPanel } from "../plugins/caption/CaptionsPanel";
+import { ClosedCaptioning } from "@phosphor-icons/react";
 import { EffectsPanel } from "../plugins/effects/EffectsPanel";
 
 interface RightInspectorProps {
@@ -35,7 +37,7 @@ interface RightInspectorProps {
   onDeleteText: (id: string) => void;
 }
 
-type ClipTab = "transform" | "speed" | "keyframes" | "audio" | "effects" | "filters";
+type ClipTab = "transform" | "speed" | "keyframes" | "audio" | "effects" | "filters" | "captions";
 
 export function RightInspector({
   selectedText,
@@ -73,6 +75,14 @@ export function RightInspector({
             >
               <Trash size={14} weight="regular" />
               <span>Delete</span>
+            </button>
+            <button
+              type="button"
+              className={`inspector-tab ${activeTab === "captions" ? "active" : ""}`}
+              onClick={() => setActiveTab("captions")}
+            >
+              <ClosedCaptioning size={14} weight="regular" />
+              <span>Captions</span>
             </button>
           </div>
 
@@ -385,6 +395,12 @@ export function RightInspector({
             {activeTab === "filters" && (
               <div className="tab-section">
                 <FiltersPanel clipId={selectedClip.id} />
+              </div>
+            )}
+            {/* TAB: CAPTIONS */}
+            {activeTab === "captions" && (
+              <div className="tab-section">
+                <CaptionsPanel clipId={selectedClip.id} />
               </div>
             )}
           </div>

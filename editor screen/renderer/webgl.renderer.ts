@@ -195,6 +195,85 @@ export class WebGLRenderer {
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 
+
+  private textCanvas: HTMLCanvasElement | null = null;
+  private textCtx: CanvasRenderingContext2D | null = null;
+
+  public renderTextOverlay(
+    text: string,
+    options: {
+      fontSize?: number;
+      fontFamily?: string;
+      color?: string;
+      x?: number;
+      y?: number;
+      alignment?: "left" | "center" | "right";
+      boxColor?: string;
+      boxPadding?: number;
+    } = {}
+  ): void {
+    if (!this.gl || !text || !text.trim()) return;
+
+    if (!this.textCanvas) {
+      this.textCanvas = document.createElement("canvas");
+      this.textCtx = this.textCanvas.getContext("2d");
+    }
+
+    const canvas = this.textCanvas;
+    const ctx = this.textCtx;
+    if (!ctx) return;
+
+    const targetW = this.canvas.width || 1280;
+    const targetH = this.canvas.height || 720;
+    if (canvas.width !== targetW || canvas.height !== targetH) {
+      canvas.width = targetW;
+      canvas.height = targetH;
+    }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const fontSize = options.fontSize ?? Math.round(canvas.height * 0.045);
+    const fontFamily = options.fontFamily || "Inter, -apple-system, sans-serif";
+    ctx.font = `600 ${fontSize}px ${fontFamily}`;
+    ctx.textAlign = (options.alignment as CanvasTextAlign) || "center";
+    ctx.textBaseline = "middle";
+
+    const posX = ((options.x ?? 50) / 100.0) * canvas.width;
+    const posY = ((options.y ?? 85) / 100.0) * canvas.height;
+
+    const metrics = ctx.measureText(text);
+    const textWidth = metrics.width;
+    const textHeight = fontSize * 1.2;
+    const paddingX = options.boxPadding ?? 14;
+    const paddingY = 6;
+    const radius = 6;
+
+    let boxLeft = posX - textWidth / 2 - paddingX;
+    if (options.alignment === "left") boxLeft = posX - paddingX;
+    if (options.alignment === "right") boxLeft = posX - textWidth - paddingX;
+    const boxTop = posY - textHeight / 2 - paddingY;
+    const boxWidth = textWidth + paddingX * 2;
+    const boxHeight = textHeight + paddingY * 2;
+
+    ctx.fillStyle = options.boxColor || "rgba(0, 0, 0, 0.65)";
+    ctx.beginPath();
+    if (typeof (ctx as any).roundRect === "function") {
+      (ctx as any).roundRect(boxLeft, boxTop, boxWidth, boxHeight, radius);
+    } else {
+      ctx.rect(boxLeft, boxTop, boxWidth, boxHeight);
+    }
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.8)";
+    ctx.lineWidth = 3;
+    ctx.strokeText(text, posX, posY);
+
+    ctx.fillStyle = options.color || "#ffffff";
+    ctx.fillText(text, posX, posY);
+
+    this.renderLayer(canvas, { opacity: 1.0 });
+  }
+
   public renderTransition(
     sourceA: TexImageSource,
     sourceB: TexImageSource,

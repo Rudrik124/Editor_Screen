@@ -27,9 +27,11 @@ class TextSubtitlePlugin(BasePipelinePlugin):
 
         current_label = in_stream.name
         text_data = clip.textData or {}
-        content = text_data.get("content") or clip.name or "Sample Text"
+        content = text_data.get("content") or text_data.get("text") or clip.name or "Sample Text"
         font_size = text_data.get("fontSize", 48)
         font_color = text_data.get("color", "white")
+        if isinstance(font_color, str) and font_color.startswith("#") and len(font_color) in (7, 9):
+            font_color = "0x" + font_color[1:]
         preset = text_data.get("preset", "none").lower()
 
         # Target percentage coordinates

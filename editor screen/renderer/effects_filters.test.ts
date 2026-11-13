@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { evaluateClipEffectTransforms } from "./effect.interpolator";
 import { FILTER_CATALOG, FILTER_INDEX_MAP } from "../plugins/filters/filters.catalog";
+import { getFilterCss } from "../plugins/filters/filterCss";
 import { EFFECT_CATALOG } from "../plugins/effects/effects.catalog";
 import { executeCommandMutation } from "../store/command.executor";
 import { ClipModel, TrackModel } from "../types/editor.types";
@@ -100,5 +101,23 @@ describe("Phase 5.1 Effects & Filters Preview Pipeline", () => {
       { type: "spin", parameters: { speed: 2 } },
     ]);
     expect(result?.inverse?.type).toBe("SET_EFFECTS");
+  });
+
+  it("generates valid CSS filters for timeline thumbnail frame rendering", () => {
+    expect(getFilterCss(null)).toBeUndefined();
+    expect(getFilterCss(undefined)).toBeUndefined();
+    expect(getFilterCss({ type: "none" })).toBeUndefined();
+
+    for (const f of FILTER_CATALOG) {
+      const css = getFilterCss({ type: f.id, intensity: 1.0 });
+      expect(css).toBeDefined();
+      expect(typeof css).toBe("string");
+      expect(css!.length).toBeGreaterThan(5);
+    }
+
+    expect(getFilterCss({ type: "pure_mono", intensity: 1.0 })).toContain("grayscale(1)");
+    expect(getFilterCss({ type: "noir_bw", intensity: 1.0 })).toContain("grayscale(1)");
+    expect(getFilterCss({ type: "hollywood_gold", intensity: 1.0 })).toContain("sepia");
+    expect(getFilterCss({ type: "cyberpunk", intensity: 1.0 })).toContain("hue-rotate(285deg)");
   });
 });

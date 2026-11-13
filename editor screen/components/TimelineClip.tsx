@@ -8,6 +8,7 @@ import { KeyframeMarkers } from "../plugins/keyframe";
 import { TransitionBadge } from "../plugins/transition";
 import { AudioProcessor } from "../plugins/audio";
 import { badgeStyle, getClipVisibleThumbnails } from "./utils/clipThumbnails";
+import { getFilterCss } from "../plugins/filters/filterCss";
 import { AudioWaveform } from "./AudioWaveform";
 
 export function TimelineClip({
@@ -190,6 +191,7 @@ export function TimelineClip({
   };
 
   const visibleThumbnails = getClipVisibleThumbnails(clip);
+  const activeFilterCss = getFilterCss(clip.filters?.[0]);
   const audioCapable = clip.type === "video" || clip.type === "audio" || clip.type === "music";
 
   return (
@@ -207,7 +209,7 @@ export function TimelineClip({
             <AudioWaveform url={clip.mediaUrl} name={clip.name || clip.label} />
           )}
           {visibleThumbnails.length > 0 ? (
-            <div className="thumbnails">
+            <div className="thumbnails" style={activeFilterCss ? { filter: activeFilterCss } : undefined}>
               {visibleThumbnails.map((thumbnail, index) => (
                 <img
                   className="thumbnail"

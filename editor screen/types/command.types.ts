@@ -31,7 +31,10 @@ export type CommandType =
   | "MUTE_CLIP"
   | "MUTE_TRACK"
   | "SET_FILTERS"
-  | "SET_EFFECTS";
+  | "SET_EFFECTS"
+  | "ADD_CAPTION"
+  | "UPDATE_CAPTION"
+  | "REMOVE_CAPTION";
 
 export interface EditorCommand {
   id: string;

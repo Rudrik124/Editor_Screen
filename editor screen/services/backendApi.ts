@@ -180,6 +180,27 @@ export async function submitTimelineRender(
       rotation: c.rotation ?? 0.0,
       filters: c.filters || [],
       effects: c.effects || [],
+      textData: c.text_data
+        ? {
+            content: c.text_data.text || (c.text_data as any).content || c.content || c.name,
+            fontSize: c.text_data.fontSize ?? 28,
+            color: c.text_data.color ?? "#ffffff",
+            x: c.text_data.x ?? 50,
+            y: c.text_data.y ?? 85,
+            preset: c.text_data.preset ?? "none",
+            alignment: c.text_data.alignment ?? "center",
+          }
+        : c.content || c.type === "text"
+        ? {
+            content: c.content || c.name || "Caption",
+            fontSize: 28,
+            color: "#ffffff",
+            x: 50,
+            y: 85,
+            preset: "none",
+            alignment: "center",
+          }
+        : undefined,
     })),
     fps: settings.fps,
     width: settings.resolution.width,

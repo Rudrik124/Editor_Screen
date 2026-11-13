@@ -51,6 +51,8 @@ export interface TimelineClip {
   freezeTime?: number;
   inPoint?: number;
   outPoint?: number;
+  filters?: Array<{ type: string; intensity?: number }>;
+  effects?: Array<{ type: string; parameters?: Record<string, any> }>;
 }
 
 export interface VideoAsset {
@@ -129,6 +131,28 @@ export interface Track {
   locked?: boolean;
 }
 
+
+export interface CaptionItem {
+  id: string;
+  text: string;
+  startTime: number;
+  endTime: number;
+  words?: Array<{ word: string; start: number; end: number; confidence?: number }>;
+}
+
+export interface TextData {
+  text: string;
+  fontSize?: number;
+  color?: string;
+  fontFamily?: string;
+  x?: number; // 0 to 100 percentage
+  y?: number; // 0 to 100 percentage
+  alignment?: "left" | "center" | "right";
+  bold?: boolean;
+  italic?: boolean;
+  preset?: string;
+}
+
 export interface ClipModel {
   id: string;
   trackId: string;
@@ -167,6 +191,10 @@ export interface ClipModel {
   effects?: Array<{ type: string; parameters?: Record<string, any> }>;
   filters?: Array<{ type: string; intensity?: number }>;
   metadata?: Record<string, unknown>;
+  text_data?: TextData;
+  start_time?: number;
+  end_time?: number;
+  captions?: CaptionItem[];
 }
 
 export interface TrackModel {

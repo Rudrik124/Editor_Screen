@@ -45,6 +45,12 @@ import {
   handleSetEffects,
 } from "./phase5.mutations";
 
+import {
+  handleAddCaption,
+  handleUpdateCaption,
+  handleRemoveCaption,
+} from "./caption.mutations";
+
 export { sanitizeClipName };
 export type { TimelineStateSlice };
 
@@ -117,6 +123,12 @@ export function executeCommandMutation(
       return handleSetFilters(state, command);
     case "SET_EFFECTS":
       return handleSetEffects(state, command);
+    case "ADD_CAPTION":
+      return handleAddCaption(state, command);
+    case "UPDATE_CAPTION":
+      return handleUpdateCaption(state, command);
+    case "REMOVE_CAPTION":
+      return handleRemoveCaption(state, command);
     default:
       console.warn(`Unknown command type: ${type}`);
       return null;

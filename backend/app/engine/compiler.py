@@ -343,7 +343,14 @@ class TimelineCompiler:
                 return 2
             return 1
 
-        ordered_tracks = sorted(request.tracks, key=get_track_layer_priority)
+        existing_track_ids = {t.id for t in request.tracks}
+        all_tracks = list(request.tracks)
+        for tid in streams_by_track:
+            if tid not in existing_track_ids:
+                inferred_type = "text" if "text" in tid else "video"
+                all_tracks.append(TrackSchema(id=tid, label=tid, type=inferred_type))
+
+        ordered_tracks = sorted(all_tracks, key=get_track_layer_priority)
 
         current_canvas = canvas_label
         for track in ordered_tracks:
