@@ -119,9 +119,9 @@ export function TimelineTrack({
 
       <div className="track-content">
         {/* Render clips */}
-        {track.clips.map((clip) => (
+        {track.clips.map((clip, index) => (
           <TimelineClip
-            key={clip.id}
+            key={clip.id || `track-clip-${index}`}
             clip={clip}
             selected={clip.id === selectedClipId}
             onSelect={() => onSelectClip?.(clip)}
@@ -131,9 +131,9 @@ export function TimelineTrack({
         ))}
 
         {/* Render blank gap zones with quick-close buttons */}
-        {gaps.map((gap) => (
+        {gaps.map((gap, index) => (
           <div
-            key={`gap-${gap.start.toFixed(2)}`}
+            key={`gap-${gap.start.toFixed(2)}-${gap.duration.toFixed(2)}-${index}`}
             className="timeline-gap-zone"
             style={{
               left: `${(gap.start / timelineDuration) * 100}%`,

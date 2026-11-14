@@ -22,20 +22,22 @@ export function computeSourceTime(
   transitionStart?: number
 ): number {
   if (!clip) return 0;
-  let local: number;
-  if (transitionStart !== undefined && time >= transitionStart) {
-    local = Math.max(0, Math.min(clip.duration, (time - transitionStart) * (clip.speed ?? 1.0)));
-  } else {
-    local = Math.max(0, Math.min(clip.duration, time - clip.start));
-  }
-  if (clip.isFrozen) return clip.freezeTime ?? clip.inPoint ?? 0;
   const inPoint = clip.inPoint ?? 0;
   const speed = clip.speed ?? 1.0;
+
+  // During transition, the incoming clip plays from its start relative to the transition window
+  let local: number;
+  if (transitionStart !== undefined && time >= transitionStart) {
+    local = Math.max(0, Math.min(clip.duration, (time - transitionStart) * speed));
+  } else {
+    local = Math.max(0, Math.min(clip.duration, (time - clip.start) * speed));
+  }
+  if (clip.isFrozen) return clip.freezeTime ?? inPoint;
   if (clip.reverse) {
     const outPoint = clip.outPoint ?? inPoint + clip.duration;
-    return Math.max(inPoint, outPoint - local * speed);
+    return Math.max(inPoint, outPoint - local);
   }
-  return inPoint + local * speed;
+  return inPoint + local;
 }
 
 export function resolveActiveClips(

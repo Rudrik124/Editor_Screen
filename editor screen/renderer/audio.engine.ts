@@ -134,9 +134,22 @@ export class AudioEngine {
       const loadErrors: string[] = [];
       await Promise.all(
         mediaClips.map(async ({ clip }) => {
+          const primaryUrl = clip.mediaUrl;
+          const fallbackUrl = clip.renderMediaUrl;
           try {
-            await this.getBuffer(clip.mediaUrl!);
+            if (primaryUrl) {
+              await this.getBuffer(primaryUrl);
+              return;
+            }
           } catch (error) {
+            if (fallbackUrl && fallbackUrl !== primaryUrl) {
+              try {
+                await this.getBuffer(fallbackUrl);
+                return;
+              } catch {
+                // Keep primary error message
+              }
+            }
             loadErrors.push(
               error instanceof Error ? error.message : `Unable to load audio for "${clip.name}".`
             );
@@ -158,7 +171,8 @@ export class AudioEngine {
       if (needsPitchPreservation) await registerSoundTouch(context);
       if (generation !== this.generation || !useEditorStore.getState().isPlaying) return;
       this.scheduleAtCurrentTime(state);
-      this.onError(loadErrors.length ? loadErrors.join(" ") : null);
+      const uniqueErrors = Array.from(new Set(loadErrors));
+      this.onError(uniqueErrors.length ? uniqueErrors.join("; ") : null);
     } catch (error) {
       const message = error instanceof Error
         ? error.message
@@ -185,7 +199,11 @@ export class AudioEngine {
     if (cached) return cached;
 
     const context = this.ensureContext();
-    const bufferPromise = fetch(url)
+    const resolvedUrl =
+      url.startsWith("/") && !url.startsWith("//")
+        ? `http://127.0.0.1:8000${url}`
+        : url;
+    const bufferPromise = fetch(resolvedUrl)
       .then((response) => {
         if (!response.ok) {
           throw new Error(`Audio media request failed (${response.status}).`);
@@ -231,17 +249,19 @@ export class AudioEngine {
 
       const source = context.createBufferSource();
       const gain = context.createGain();
-      const volume = clip.volume ?? 1;
+      const rawVolume = clip.volume ?? 1;
+      const volume = Number.isFinite(rawVolume) ? Math.max(0, Math.min(5, rawVolume)) : 1;
       const signature = getClipSignature(clip, trackMuted);
       source.buffer = buffer;
-      source.playbackRate.value = playbackRate;
-      gain.gain.value = Math.max(0, Math.min(5, volume));
+      const safePlaybackRate = Number.isFinite(playbackRate) && playbackRate > 0 ? playbackRate : 1;
+      source.playbackRate.value = safePlaybackRate;
+      gain.gain.value = volume;
       const stretchNode =
-        Math.abs(playbackRate - 1) > 0.001
+        Math.abs(safePlaybackRate - 1) > 0.001
           ? new SoundTouchNode({ context })
           : undefined;
       if (stretchNode) {
-        stretchNode.playbackRate.value = playbackRate;
+        stretchNode.playbackRate.value = safePlaybackRate;
         stretchNode.pitch.value = 1;
         source.connect(stretchNode);
         stretchNode.connect(gain);
@@ -287,7 +307,8 @@ export class AudioEngine {
       if (!clip) continue;
       const trackMuted = getTrackMuted(clip.trackId, state.tracks);
       if (clip.muted || trackMuted) continue;
-      const volume = Math.max(0, Math.min(5, clip.volume ?? 1));
+      const rawVolume = clip.volume ?? 1;
+      const volume = Number.isFinite(rawVolume) ? Math.max(0, Math.min(5, rawVolume)) : 1;
       if (volume !== scheduled.volume) {
         scheduled.gain.gain.setTargetAtTime(volume, context.currentTime, 0.015);
         scheduled.volume = volume;

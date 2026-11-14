@@ -88,19 +88,26 @@ class Settings(BaseSettings):
     FFMPEG_PATH: str = ""
     FFMPEG_BINARY: str = ""
 
+    # AI Assistant (Phase 6)
+    GEMINI_API_KEY: str = ""
+    AI_MODEL_NAME: str = "gemini-3.1-flash-lite"
+
     def get_ffmpeg_path(self) -> str:
-        """Returns verified FFmpeg executable path."""
+        """Returns verified modern FFmpeg executable path (supports xfade / filters)."""
         for candidate in (self.FFMPEG_PATH, self.FFMPEG_BINARY):
             if candidate and Path(candidate).exists():
                 return candidate
+        # Prioritize imageio_ffmpeg (v7.1 with full xfade / acrossfade support)
+        if imageio_ffmpeg is not None:
+            try:
+                exe = imageio_ffmpeg.get_ffmpeg_exe()
+                if Path(exe).exists():
+                    return str(exe)
+            except Exception:
+                pass
         local_bin = self.BASE_DIR / "bin" / "ffmpeg.exe"
         if local_bin.exists():
             return str(local_bin)
-        if imageio_ffmpeg is not None:
-            try:
-                return imageio_ffmpeg.get_ffmpeg_exe()
-            except Exception:
-                pass
         return "ffmpeg"
 
     def setup_directories(self) -> None:

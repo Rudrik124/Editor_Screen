@@ -19,6 +19,8 @@ import { uploadAsset } from "./services/backendApi";
 import { isImageMedia } from "./components/utils/previewResolver";
 import { createAudioAsset } from "./left-side toolbar/functionality/Audio/functionality/createAudioAsset";
 import { DEFAULT_SAMPLE_MEDIA } from "./data/sampleMedia";
+import { AIAssistantPanel } from "./plugins/ai-assistant";
+import { UpgradePlanModal } from "./components/UpgradePlanModal";
 
 export function VeytrixEditor() {
   // Bind global keyboard shortcuts (Ctrl+Z, Ctrl+Shift+Z, S, Del, Space)
@@ -54,16 +56,8 @@ export function VeytrixEditor() {
     mediaRef.current = media;
   }, [media, videoAssets, audioAssets]);
 
-  useEffect(() => () => {
-    videoAssetsRef.current.forEach((asset) => URL.revokeObjectURL(asset.url));
-    audioAssetsRef.current.forEach((asset) => URL.revokeObjectURL(asset.url));
-    if (
-      mediaRef.current &&
-      !videoAssetsRef.current.some((asset) => asset.url === mediaRef.current?.url)
-    ) {
-      URL.revokeObjectURL(mediaRef.current.url);
-    }
-  }, []);
+  // Retain object URLs for the active editing session so Web Audio and video elements
+  // do not fail with "Failed to fetch" on React remounts or HMR updates.
 
   // Sync preview media if selected clip changes
   useEffect(() => {
@@ -435,6 +429,9 @@ export function VeytrixEditor() {
         videoAssets={videoAssets}
         onAddVideo={addVideoToTimeline}
       />
+      {/* Phase 6 — AI Assistant Floating Panel & Upgrade Modal */}
+      <AIAssistantPanel />
+      <UpgradePlanModal />
     </main>
   );
 }
