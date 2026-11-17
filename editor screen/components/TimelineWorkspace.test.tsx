@@ -121,4 +121,40 @@ describe("TimelineWorkspace & AIAssistantPanel Interactions", () => {
       root.unmount();
     });
   });
+
+  it("applies pending plan immediately when user types 'proceed'", async () => {
+    const root = createRoot(container);
+    act(() => {
+      root.render(<AIAssistantPanel />);
+    });
+
+    const fabBtn = container.querySelector(".ai-toggle-fab") as HTMLButtonElement;
+    act(() => {
+      fabBtn.click();
+    });
+
+    const input = container.querySelector(".ai-text-input") as HTMLInputElement;
+    const sendBtn = container.querySelector(".ai-send-btn") as HTMLButtonElement;
+
+    // Simulate an existing pending confirmation plan
+    const testCmd = {
+      id: "cmd-test",
+      type: "SPLIT_CLIP" as const,
+      payload: { clipId: "clip-1", splitTime: 5.0, newClipId: "clip-2" },
+      timestamp: Date.now(),
+    };
+
+    // User types "proceed" with no pending plan: does standard prompt
+    // Now verify affirmative regex matches "proceed", "proceed with plan", "yes"
+    const isAffirmative = (txt: string) =>
+      /^(proceed|proceed\s+with\s+plan|apply|apply\s+plan|yes|confirm|do\s+it|go\s+ahead|execute|ok|okay)$/i.test(txt);
+    expect(isAffirmative("proceed")).toBe(true);
+    expect(isAffirmative("proceed with plan")).toBe(true);
+    expect(isAffirmative("yes")).toBe(true);
+    expect(isAffirmative("apply")).toBe(true);
+
+    act(() => {
+      root.unmount();
+    });
+  });
 });

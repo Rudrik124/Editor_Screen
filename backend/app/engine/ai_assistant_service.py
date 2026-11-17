@@ -173,6 +173,23 @@ def handle_intelligent_conversational_turn(
             model_used=model_name
         )
 
+    # Affirmative confirmation (e.g. "proceed", "proceed with plan", "yes", "apply")
+    affirmative_words = {"proceed", "proceed with plan", "apply", "apply plan", "yes", "confirm", "do it", "go ahead", "execute"}
+    if p_lower in affirmative_words:
+        msg = "Ready to proceed! You can click the 'Apply Plan' button on the plan card above, or tell me if you'd like any modifications."
+        return AIAssistantResponse(
+            success=True,
+            message=msg,
+            responseText=msg,
+            planSteps=[],
+            requiresConfirmation=False,
+            tool_calls=[],
+            commands=[],
+            validation_errors=[],
+            remaining_credits=remaining_credits,
+            model_used=model_name
+        )
+
     # 2. Boundary Check: "trim ... to X"
     if "trim" in p_lower:
         parsed_target = parse_time_expression(prompt)
@@ -498,20 +515,48 @@ def process_ai_assistant_request(
             args["newClipId"] = new_cid
 
             sim_ok, actual_cid, _ = simulator.split_clip(cid, split_time, new_cid)
-            if sim_ok and actual_cid:
-                args["clipId"] = actual_cid
+            if not sim_ok:
+                errors.append(f"Cannot split clip: timestamp {split_time:.2f}s is outside clip boundaries.")
+                continue
 
+            args["clipId"] = actual_cid
+            validated_tool_calls.append(ToolCallRequestItem(name=name, args=args))
+            cmd = tool_call_to_editor_command(name, args)
+            commands.append(cmd)
             plan_steps.append(f"Cut clip at {round(split_time, 2)}s")
+            continue
 
         elif name == "trim_clip":
-            end_val = args.get("end") or args.get("duration") or 0.0
-            plan_steps.append(f"Trim clip boundary to {round(float(end_val), 2)}s")
+            valid, err_msg, validated_args = validate_tool_call(
+                tool_name=name,
+                raw_args=args,
+                timeline_state={"clips": simulator.clips}
+            )
+            if not valid:
+                errors.append(err_msg or "Invalid trim call")
+                continue
+            v_args = validated_args or args
+            simulator.trim_clip(v_args["clipId"], v_args.get("edge", "right"), v_args.get("newTime", 0.0))
+            validated_tool_calls.append(ToolCallRequestItem(name=name, args=v_args))
+            commands.append(tool_call_to_editor_command(name, v_args))
+            plan_steps.append(f"Trim clip boundary to {round(float(v_args.get('newTime', 0.0)), 2)}s")
+            continue
 
         elif name == "auto_transcribe_captions":
             plan_steps.append("Transcribe spoken audio dialogue to subtitles")
 
         elif name == "add_transition":
             plan_steps.append(f"Add {args.get('type', 'cross_dissolve')} transition to clip")
+
+        elif name == "set_filters":
+            f_list = args.get("filters", [])
+            f_names = ", ".join([f.get("type", "filter") for f in f_list]) if f_list else "filter"
+            plan_steps.append(f"Apply filter ({f_names}) to clip")
+
+        elif name == "set_effects":
+            e_list = args.get("effects", [])
+            e_names = ", ".join([e.get("type", "effect") for e in e_list]) if e_list else "effect"
+            plan_steps.append(f"Apply visual effect ({e_names}) to clip")
 
         valid, err_msg, validated_args = validate_tool_call(
             tool_name=name,

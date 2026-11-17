@@ -93,6 +93,35 @@ export const AIAssistantPanel: React.FC = () => {
     const trimmed = inputPrompt.trim();
     if (!trimmed || isProcessing) return;
 
+    // Check if user is confirming an unapplied plan (e.g. "proceed", "proceed with plan", "yes", "apply")
+    const isAffirmative = /^(proceed|proceed\s+with\s+plan|apply|apply\s+plan|yes|confirm|do\s+it|go\s+ahead|execute|ok|okay)$/i.test(trimmed);
+    const pendingPlanMsg = [...messages].reverse().find(
+      (m) => m.sender === "assistant" && m.requiresConfirmation && !m.isApplied && m.commands && m.commands.length > 0
+    );
+
+    if (isAffirmative && pendingPlanMsg) {
+      setInputPrompt("");
+      executeCommandList(pendingPlanMsg.commands!);
+      setMessages((prev) => [
+        ...prev.map((m) =>
+          m.id === pendingPlanMsg.id ? { ...m, isApplied: true, requiresConfirmation: false } : m
+        ),
+        {
+          id: `user-${Date.now()}`,
+          sender: "user",
+          text: trimmed,
+        },
+        {
+          id: `asst-${Date.now()}`,
+          sender: "assistant",
+          text: `Proceeding! Successfully applied all ${pendingPlanMsg.commands!.length} edits from the plan to your timeline.`,
+          isApplied: true,
+          commands: pendingPlanMsg.commands,
+        },
+      ]);
+      return;
+    }
+
     if (creditBalance <= 0) {
       openUpgradeModal();
       return;

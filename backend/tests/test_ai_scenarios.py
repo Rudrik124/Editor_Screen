@@ -75,3 +75,25 @@ def test_refuse_python_coding(sample_timeline):
     assert res.success is True
     assert len(res.commands) == 0
     assert "exclusively" in res.responseText.lower() or "video editing" in res.responseText.lower()
+
+def test_affirmative_proceed_prompt(sample_timeline):
+    req = AIAssistantPromptRequest(
+        prompt="proceed with plan",
+        timelineState=sample_timeline
+    )
+    res = process_ai_assistant_request(req)
+    assert res.success is True
+    assert "proceed" in res.responseText.lower() or "apply plan" in res.responseText.lower()
+
+def test_mlops_dataset_evaluation():
+    from pathlib import Path
+    from app.mlops.evaluator import evaluate_dataset_integrity
+
+    val_path = Path(__file__).resolve().parent.parent / "storage" / "datasets" / "veytrix_sft_val.jsonl"
+    if val_path.exists():
+        metrics = evaluate_dataset_integrity(val_path)
+        assert metrics["total_dialogues"] > 0
+        assert metrics["schema_pass_rate_pct"] == 100.0
+        assert "feature_film" in metrics["tier_distribution"]
+        assert "creator_prosumer" in metrics["tier_distribution"]
+        assert "novice" in metrics["tier_distribution"]
