@@ -70,3 +70,27 @@ def test_build_system_instruction():
     assert "Veytrix AI" in prompt
     assert "Intro" in prompt
     assert "c1" in prompt
+
+def test_ai_assistant_timeout_handling(monkeypatch):
+    from app.engine import ai_assistant_service
+    from app.core.config import settings
+
+    def mock_call_gemini(*args, **kwargs):
+        raise TimeoutError("AI model request timed out")
+
+    monkeypatch.setattr(ai_assistant_service, "call_gemini_conversational", mock_call_gemini)
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "test_key")
+
+    req = AIAssistantPromptRequest(
+        prompt="Make a very complex edit with 50 transitions",
+        timelineState={
+            "duration": 30.0,
+            "clips": [{"id": "c1", "start": 0, "duration": 30}]
+        }
+    )
+
+    res = ai_assistant_service.process_ai_assistant_request(req, remaining_credits=50)
+    assert res.success is False
+    assert "timed out" in res.message.lower()
+    assert len(res.validation_errors) == 1
+    assert "timed out" in res.validation_errors[0].lower()

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useCallback } from "react";
 import { TimelineTrack } from "./TimelineTrack";
 import { TimelineClip, Track, VideoAsset } from "../types/editor.types";
 import { TextElement } from "../left-side toolbar/functionality/text/functionality/text.types";
@@ -99,6 +99,95 @@ export function TimelineWorkspace({
     return ticks;
   }, [timelineDuration]);
 
+  const isScrubbingRef = useRef(false);
+  const rafIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+    };
+  }, []);
+
+  const calculateTimeFromClientX = useCallback(
+    (clientX: number): number => {
+      const el = timelineMainRef.current;
+      if (!el || timelineDuration <= 0) return 0;
+      const rulerTicks = el.querySelector(".ruler-ticks-track") as HTMLElement | null;
+      const trackContent = el.querySelector(".track-content") as HTMLElement | null;
+      const contentEl =
+        (rulerTicks && rulerTicks.getBoundingClientRect().width > 0 ? rulerTicks : null) ||
+        (trackContent && trackContent.getBoundingClientRect().width > 0 ? trackContent : null) ||
+        rulerTicks ||
+        trackContent;
+      if (!contentEl) return 0;
+      const contentRect = contentEl.getBoundingClientRect();
+      if (contentRect.width <= 0) return 0;
+      const ratio = Math.max(0, Math.min(1, (clientX - contentRect.left) / contentRect.width));
+      return ratio * timelineDuration;
+    },
+    [timelineDuration]
+  );
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+
+      const target = e.target as HTMLElement;
+      // Do not initiate scrubbing if clicking interactive controls
+      if (
+        target.closest(".timeline-clip") ||
+        target.closest("button") ||
+        target.closest(".timeline-gap-zone") ||
+        target.closest(".track-header")
+      ) {
+        return;
+      }
+
+      e.preventDefault();
+      isScrubbingRef.current = true;
+      timelineMainRef.current?.classList.add("scrubbing");
+
+      if (useEditorStore.getState().isPlaying) {
+        useEditorStore.getState().setIsPlaying(false);
+      }
+
+      const initialTime = calculateTimeFromClientX(e.clientX);
+      setCurrentTime(initialTime, true);
+
+      const onPointerMove = (moveEvent: PointerEvent) => {
+        if (!isScrubbingRef.current) return;
+        const clientX = moveEvent.clientX;
+
+        if (rafIdRef.current !== null) {
+          cancelAnimationFrame(rafIdRef.current);
+        }
+        rafIdRef.current = requestAnimationFrame(() => {
+          const newTime = calculateTimeFromClientX(clientX);
+          setCurrentTime(newTime, true);
+        });
+      };
+
+      const onPointerUp = () => {
+        isScrubbingRef.current = false;
+        timelineMainRef.current?.classList.remove("scrubbing");
+        if (rafIdRef.current !== null) {
+          cancelAnimationFrame(rafIdRef.current);
+          rafIdRef.current = null;
+        }
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", onPointerUp);
+        window.removeEventListener("pointercancel", onPointerUp);
+      };
+
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+      window.addEventListener("pointercancel", onPointerUp);
+    },
+    [calculateTimeFromClientX, setCurrentTime]
+  );
+
   // Handle timeline scrubber / seek on click
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const el = timelineMainRef.current;
@@ -114,66 +203,66 @@ export function TimelineWorkspace({
     }
   };
 
-  const renderedTracks: Track[] = storeTracks.map((track) => {
-    if (track.id === "text") {
-      if (textElements.length > 0) {
-        return {
-          id: track.id,
-          label: track.label,
-          type: "text",
-          clips: textElements.map((element, idx) => ({
-            id: element.id,
-            label: element.content || "Text",
+  const renderedTracks: Track[] = useMemo(() => {
+    return storeTracks.map((track) => {
+      if (track.id === "text") {
+        if (textElements.length > 0) {
+          return {
+            id: track.id,
+            label: track.label,
             type: "text",
-            start: element.start,
-            duration: element.duration,
-            color: "#075c61",
-            presentationWidth: getTextPresentationWidth(idx),
-          })),
-        };
+            clips: textElements.map((element, idx) => ({
+              id: element.id,
+              label: element.content || "Text",
+              type: "text",
+              start: element.start,
+              duration: element.duration,
+              color: "#075c61",
+              presentationWidth: getTextPresentationWidth(idx),
+            })),
+          };
+        }
       }
-    }
 
-    const clips: TimelineClip[] = track.clipIds
-      .map((id) => storeClips[id])
-      .filter(Boolean)
-      .map((c) => ({
-        id: c.id,
-        label: c.name,
-        type: c.type,
-        start: c.start,
-        duration: c.duration,
-        color: c.color || "#22262b",
-        // Audio clips retain the source media for extraction/export, but their
-        // timeline representation is an audio block rather than video frames.
-        thumbnails: c.type === "video" ? c.thumbnails : undefined,
-        rawThumbnails: c.type === "video" ? c.rawThumbnails || c.thumbnails : undefined,
-        baseDuration: c.baseDuration,
-        assetId: c.assetId,
-        mediaUrl: c.mediaUrl,
-        presentationWidth: c.presentationWidth,
-        locked: c.locked,
-        name: c.name,
-        speed: c.speed,
-        reverse: c.reverse,
-        isFrozen: c.isFrozen,
-        freezeTime: c.freezeTime,
-        inPoint: c.inPoint,
-        outPoint: c.outPoint,
-        muted: c.muted,
-        filters: c.filters,
-        effects: c.effects,
-      }));
+      const clips: TimelineClip[] = track.clipIds
+        .map((id) => storeClips[id])
+        .filter(Boolean)
+        .map((c) => ({
+          id: c.id,
+          label: c.name,
+          type: c.type,
+          start: c.start,
+          duration: c.duration,
+          color: c.color || "#22262b",
+          thumbnails: c.type === "video" ? c.thumbnails : undefined,
+          rawThumbnails: c.type === "video" ? c.rawThumbnails || c.thumbnails : undefined,
+          baseDuration: c.baseDuration,
+          assetId: c.assetId,
+          mediaUrl: c.mediaUrl,
+          presentationWidth: c.presentationWidth,
+          locked: c.locked,
+          name: c.name,
+          speed: c.speed,
+          reverse: c.reverse,
+          isFrozen: c.isFrozen,
+          freezeTime: c.freezeTime,
+          inPoint: c.inPoint,
+          outPoint: c.outPoint,
+          muted: c.muted,
+          filters: c.filters,
+          effects: c.effects,
+        }));
 
-    return {
-      id: track.id,
-      label: track.label,
-      type: track.type,
-      muted: track.muted,
-      locked: track.locked,
-      clips,
-    };
-  });
+      return {
+        id: track.id,
+        label: track.label,
+        type: track.type,
+        muted: track.muted,
+        locked: track.locked,
+        clips,
+      };
+    });
+  }, [storeTracks, storeClips, textElements]);
 
   const activeSelectedId = selectedClipId || selectedTextId;
   const playheadPct =
@@ -186,10 +275,11 @@ export function TimelineWorkspace({
       <div
         className="timeline-main"
         ref={timelineMainRef}
+        onPointerDown={handlePointerDown}
         onClick={handleTimelineClick}
       >
         {/* Dynamic Timeline Ruler */}
-        <div className="timeline-ruler">
+        <div className="timeline-ruler" onPointerDown={handlePointerDown}>
           <div className="ruler-header-spacer" />
           <div className="ruler-ticks-track">
             {rulerTicks.map((tick) => (
@@ -230,6 +320,7 @@ export function TimelineWorkspace({
         {/* Playhead needle with diamond top */}
         <div
           className="playhead"
+          onPointerDown={handlePointerDown}
           style={{
             left: `calc(var(--track-header-w) + (100% - var(--track-header-w) - var(--track-gap-r)) * ${playheadPct / 100})`,
           }}

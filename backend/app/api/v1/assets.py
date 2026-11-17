@@ -1,14 +1,16 @@
 import uuid
+import json
 from pathlib import Path
-from fastapi import APIRouter, UploadFile, File, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, HTTPException, status, Depends
 from app.core.config import settings
+from app.core.dependencies import get_current_user_id
 from app.core.security import sanitize_filename, validate_file_extension
 from app.runners.probe_runner import ProbeRunner
 
 router = APIRouter(prefix="/assets", tags=["Assets"])
 
 @router.post("/upload")
-async def upload_asset(file: UploadFile = File(...)):
+async def upload_asset(file: UploadFile = File(...), owner: str = Depends(get_current_user_id)):
     """
     Accepts media file upload, validates extension, sanitizes filename,
     and returns asset metadata for timeline placement.
@@ -41,6 +43,10 @@ async def upload_asset(file: UploadFile = File(...)):
 
     # Probe file
     probe_info = await ProbeRunner.probe(str(target_path))
+
+    owners = settings.STORAGE_DIR / "asset_owners"
+    owners.mkdir(parents=True, exist_ok=True)
+    (owners / f"{asset_id}.json").write_text(json.dumps({"owner": owner, "filename": stored_filename}))
 
     return {
         "assetId": asset_id,

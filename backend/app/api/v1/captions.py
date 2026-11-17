@@ -129,7 +129,7 @@ def transcribe_with_gemini(audio_path: Path, api_key: str, model_name: str) -> O
             data=json.dumps(body).encode("utf-8"),
             headers={"Content-Type": "application/json"}
         )
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=60) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
             # Clean markdown if present

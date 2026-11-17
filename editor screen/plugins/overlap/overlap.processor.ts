@@ -30,6 +30,14 @@ export const OverlapProcessor = {
     return state.dispatch(cmd);
   },
 
+  moveToVideoTrack: (clipId: string): boolean => {
+    const state = useEditorStore.getState();
+    const clip = state.clips[clipId];
+    const track = state.tracks.find(t => t.id === "video");
+    if (!clip || clip.locked || !track || track.locked) return false;
+    return state.dispatch(createSetOverlapCommand({ clipId, trackId: track.id, scale: 1, positionX: 0, positionY: 0 }));
+  },
+
   setTransform: (payload: SetClipTransformPayload): boolean => {
     const state = useEditorStore.getState();
     const clip = state.clips[payload.clipId];

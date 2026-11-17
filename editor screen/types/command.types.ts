@@ -33,6 +33,7 @@ export type CommandType =
   | "SET_FILTERS"
   | "SET_EFFECTS"
   | "ADD_CAPTION"
+  | "UPDATE_TEXT"
   | "UPDATE_CAPTION"
   | "REMOVE_CAPTION";
 

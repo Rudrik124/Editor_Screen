@@ -13,6 +13,6 @@ export function useOverlapState(clipId: string | null) {
     positionY: clip?.positionY ?? 0,
     rotation: clip?.rotation ?? 0,
     opacity: clip?.opacity ?? 1.0,
-    canEdit: Boolean(clip && !clip.locked),
+    canEdit: Boolean(clip && !clip.locked && !currentTrack?.locked),
   };
 }

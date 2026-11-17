@@ -1,3 +1,5 @@
+import { reverseKey, useReversePreviews } from "../services/reversePreview";
+import { TextOverlay } from "./TextOverlay";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   SkipBack,
@@ -29,6 +31,7 @@ interface PreviewWorkspaceProps {
   media: { url: string; type: "video" | "image"; name: string } | null;
   onPlaybackControllerReady: (controller: { isPlaying: boolean; toggle: () => void }) => void;
   textElements: TextElement[];
+  onUpdateText: (id: string, changes: Partial<TextElement>) => void;
   onCurrentTimeChange: (time: number) => void;
 }
 
@@ -58,6 +61,7 @@ export function PreviewWorkspace({
   media,
   onPlaybackControllerReady,
   textElements,
+  onUpdateText,
 }: PreviewWorkspaceProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoPrimaryRef = useRef<HTMLVideoElement>(null);
@@ -73,6 +77,9 @@ export function PreviewWorkspace({
 
   const storeTracks = useEditorStore((state) => state.tracks);
   const storeClips = useEditorStore((state) => state.clips);
+  const { previews: reversePreviews, retry: retryReverse } = useReversePreviews(storeClips);
+  const reversePreviewsRef = useRef(reversePreviews);
+  reversePreviewsRef.current = reversePreviews;
   const storeCurrentTime = useEditorStore((state) => state.currentTime);
   const storeDuration = useEditorStore((state) => state.duration);
   const isPlaying = useEditorStore((state) => state.isPlaying);
@@ -112,6 +119,13 @@ function resolveClipLayerTransform(clip: ClipModel, localTime: number): LayerTra
 
   const activeMediaUrl =
     activeVideoClip?.mediaUrl || activeOverlayClip?.mediaUrl || media?.url || null;
+
+  const reverseRequired = [activeVideoClip, activeOverlayClip, transitionInfo ? nextVideoClip : null]
+    .filter((clip): clip is ClipModel => Boolean(clip?.reverse && !clip.isFrozen && clip.mediaType !== "image"));
+  const reversePending = reverseRequired.some(clip => !reversePreviews[reverseKey(clip)]?.url);
+  useEffect(() => {
+    if (reversePending && isPlaying) setIsPlaying(false);
+  }, [reversePending, isPlaying, setIsPlaying]);
 
   // Helper to retrieve loaded texture source for Slot A or Slot B
   const getSlotSource = useCallback(
@@ -335,8 +349,11 @@ function resolveClipLayerTransform(clip: ClipModel, localTime: number): LayerTra
           image.src = clip.mediaUrl;
         }
       } else {
-        const targetSourceTime = computeSourceTime(clip, currentTime, transStart);
-        syncVideoElement(video, clip.mediaUrl, targetSourceTime, shouldPlay, clip.speed ?? 1.0);
+        const prepared = clip.reverse && !clip.isFrozen ? reversePreviewsRef.current[reverseKey(clip)] : undefined;
+        if (clip.reverse && !clip.isFrozen && !prepared?.url) { video?.pause(); return; }
+        const previewClip = prepared?.url ? { ...clip, reverse: false, inPoint: 0, outPoint: undefined } : clip;
+        const targetSourceTime = computeSourceTime(previewClip, currentTime, transStart);
+        syncVideoElement(video, prepared?.url ?? clip.mediaUrl, targetSourceTime, shouldPlay && !clip.isFrozen, clip.speed ?? 1.0);
       }
     },
     []
@@ -428,6 +445,7 @@ function resolveClipLayerTransform(clip: ClipModel, localTime: number): LayerTra
     videoClips,
     isPlaying,
     syncSlot,
+    reversePreviews,
     renderFrame,
   ]);
 
@@ -443,6 +461,13 @@ function resolveClipLayerTransform(clip: ClipModel, localTime: number): LayerTra
   return (
     <section className="preview-workspace">
       <div className="preview-canvas">
+        {reversePending && <div role="status" className="audio-playback-error">
+          {reverseRequired.map(clip => {
+            const preview = reversePreviews[reverseKey(clip)];
+            return <div key={clip.id}>{preview?.error ?? `Preparing reverse: ${preview?.progress ?? 0}%`}</div>;
+          })}
+          {reverseRequired.some(clip => reversePreviews[reverseKey(clip)]?.error) && <button type="button" onClick={retryReverse}>Retry</button>}
+        </div>}
         {audioPlaybackError && (
           <div className="audio-playback-error" role="alert">
             Audio playback issue: {audioPlaybackError}
@@ -540,22 +565,10 @@ function resolveClipLayerTransform(clip: ClipModel, localTime: number): LayerTra
             {textElements
               .filter((e) => storeCurrentTime >= e.start && storeCurrentTime < e.start + e.duration)
               .map((e) => (
-                <div
-                  key={e.id}
-                  className="text-overlay"
-                  style={{
-                    position: "absolute",
-                    left: `${e.x}%`,
-                    top: `${e.y}%`,
-                    color: e.color,
-                    fontSize: `${e.fontSize}px`,
-                    fontWeight: e.bold ? 700 : 400,
-                    fontStyle: e.italic ? "italic" : "normal",
-                    textAlign: e.alignment,
-                  }}
-                >
-                  {e.content}
-                </div>
+                <TextOverlay key={e.id} element={e} canvasWidth={RatioProcessor.getDimensions(aspectRatio).width}
+                  selected={useEditorStore.getState().selectedClipId === e.id}
+                  locked={Boolean(storeClips[e.id]?.locked || storeTracks.find(t => t.id === storeClips[e.id]?.trackId)?.locked)}
+                  onSelect={id => useEditorStore.getState().selectClip(id)} onUpdate={onUpdateText} />
               ))}
           </div>
         ) : (

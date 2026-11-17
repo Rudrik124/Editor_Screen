@@ -40,6 +40,7 @@ export const AIAssistantPanel: React.FC = () => {
   const [lastBatchCommands, setLastBatchCommands] = useState<EditorCommand[]>([]);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Zustand Store selectors
   const duration = useEditorStore((s) => s.duration);
@@ -64,7 +65,11 @@ export const AIAssistantPanel: React.FC = () => {
 
   useEffect(() => {
     if (isOpen) {
-      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      chatEndRef.current?.scrollIntoView?.({ behavior: "smooth" });
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
     }
   }, [messages, isOpen]);
 
@@ -308,6 +313,8 @@ export const AIAssistantPanel: React.FC = () => {
 
           <div className="ai-input-area">
             <input
+              ref={inputRef}
+              autoFocus
               type="text"
               className="ai-text-input"
               placeholder="e.g. Split into 5 clips and add transitions..."

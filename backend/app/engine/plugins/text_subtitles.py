@@ -13,8 +13,9 @@ class TextSubtitlePlugin(BasePipelinePlugin):
     @staticmethod
     def escape_text(text: str) -> str:
         """Escapes text for FFmpeg drawtext filter parameter."""
-        text = text.replace("\\", "\\\\").replace("'", "\\'").replace(":", "\\:").replace("%", "\\%")
-        return text
+        # Escape drawtext options first, then protect quotes in the filter graph.
+        text = text.replace("\\", "\\\\").replace("'", "\\'").replace(":", "\\:")
+        return text.replace("'", "'\\''")
 
     def transform_clip_video(
         self,
@@ -28,15 +29,18 @@ class TextSubtitlePlugin(BasePipelinePlugin):
         current_label = in_stream.name
         text_data = clip.textData or {}
         content = text_data.get("content") or text_data.get("text") or clip.name or "Sample Text"
-        font_size = text_data.get("fontSize", 48)
+        font_size = max(8, min(240, float(text_data.get("fontSize", 48))))
+        font_size *= context.width / max(1, float(text_data.get("referenceWidth", context.width)))
         font_color = text_data.get("color", "white")
         if isinstance(font_color, str) and font_color.startswith("#") and len(font_color) in (7, 9):
             font_color = "0x" + font_color[1:]
-        preset = text_data.get("preset", "none").lower()
+        if not isinstance(font_color, str) or not re.fullmatch(r"(?:0x[0-9a-fA-F]{6,8}|[a-zA-Z]+)", font_color):
+            raise ValueError("Invalid text color")
+        preset = str(text_data.get("preset", "none")).lower()
 
         # Target percentage coordinates
-        pct_x = float(text_data.get("x", 50))
-        pct_y = float(text_data.get("y", 50))
+        pct_x = max(0, min(100, float(text_data.get("x", 50))))
+        pct_y = max(0, min(100, float(text_data.get("y", 50))))
 
         # Map to FFmpeg expression
         pos_x = f"(w-text_w)*{pct_x / 100.0}"
@@ -64,10 +68,20 @@ class TextSubtitlePlugin(BasePipelinePlugin):
             "alpha": alpha_expr,
             "x": pos_x,
             "y": pos_y,
-            "box": "1",
+            "expansion": "none",
+            "box": "0",
             "boxcolor": "black@0.4",
-            "boxborderw": "8"
+            "boxborderw": "8",
+            "font": "Arial" + (" Bold" if text_data.get("bold") else "") + (" Italic" if text_data.get("italic") else "")
         }
+
+        if preset == "neon":
+            glow_text = context.generate_label("text_glow")
+            glow_blur = context.generate_label("text_blur")
+            glow_args = {**args, "borderw": "3", "bordercolor": str(font_color)}
+            context.add_node(FilterNode(filter_name="drawtext", inputs=[current_label], outputs=[glow_text], args=glow_args))
+            context.add_node(FilterNode(filter_name="gblur", inputs=[glow_text], outputs=[glow_blur], args={"sigma": "6"}))
+            current_label = glow_blur
 
         context.add_node(FilterNode(
             filter_name="drawtext",

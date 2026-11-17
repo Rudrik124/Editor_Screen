@@ -412,12 +412,24 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 1.5px;
+  width: 2px;
   background: #f43f5e;
   z-index: 25;
-  pointer-events: none;
+  pointer-events: auto;
   box-shadow: 0 0 6px rgba(244, 63, 94, 0.7);
   transform: translateX(-50%);
+  cursor: ew-resize;
+}
+
+/* Expanded hit target for playhead needle */
+.playhead::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -7px;
+  width: 16px;
+  cursor: ew-resize;
 }
 
 .playhead span {
@@ -425,10 +437,27 @@
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 11px;
-  height: 10px;
+  width: 13px;
+  height: 12px;
   background: #f43f5e;
   clip-path: polygon(0 0, 100% 0, 50% 100%);
+  cursor: ew-resize;
+}
+
+/* Expanded hit target for playhead diamond cap */
+.playhead span::after {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: -8px;
+  width: 29px;
+  height: 24px;
+  cursor: ew-resize;
+}
+
+.timeline-main.scrubbing {
+  user-select: none;
+  cursor: ew-resize;
 }
 
 /* 7. BLANK GAP ZONE */

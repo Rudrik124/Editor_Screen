@@ -1,3 +1,4 @@
+import { handleUpdateText } from "./text.mutations";
 import { EditorCommand } from "../types/command.types";
 import {
   TimelineStateSlice,
@@ -125,6 +126,8 @@ export function executeCommandMutation(
       return handleSetEffects(state, command);
     case "ADD_CAPTION":
       return handleAddCaption(state, command);
+    case "UPDATE_TEXT":
+      return handleUpdateText(state, command);
     case "UPDATE_CAPTION":
       return handleUpdateCaption(state, command);
     case "REMOVE_CAPTION":

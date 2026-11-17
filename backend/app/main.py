@@ -16,6 +16,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
+from app.api.v1.preview import router as preview_router
 from app.api.v1.health import router as health_router
 from app.api.v1.assets import router as assets_router
 from app.api.v1.timeline import router as timeline_router
@@ -35,7 +36,16 @@ async def lifespan(app: FastAPI):
     settings.setup_directories()
     ffmpeg_path = settings.get_ffmpeg_path()
     logger.info(f"Verified FFmpeg executable: {ffmpeg_path}")
+    from app.api.v1.preview import cleanup_loop
+    preview_cleanup = asyncio.create_task(cleanup_loop())
     yield
+    preview_cleanup.cancel()
+    await asyncio.gather(preview_cleanup, return_exceptions=True)
+    from app.api.v1.preview import jobs, tasks
+    for job in jobs.values():
+        job["cancel"].set()
+    if tasks:
+        await asyncio.gather(*list(tasks), return_exceptions=True)
     logger.info("Shutting down Veytrix Backend.")
 
 app = FastAPI(
@@ -57,6 +67,7 @@ app.add_middleware(
 app.mount("/uploads", StaticFiles(directory=str(settings.UPLOAD_DIR)), name="uploads")
 
 # Mount API v1 Routers
+app.include_router(preview_router, prefix=settings.API_V1_STR)
 app.include_router(health_router, prefix=settings.API_V1_STR)
 app.include_router(assets_router, prefix=settings.API_V1_STR)
 app.include_router(timeline_router, prefix=settings.API_V1_STR)

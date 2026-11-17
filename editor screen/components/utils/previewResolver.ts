@@ -28,13 +28,13 @@ export function computeSourceTime(
   // During transition, the incoming clip plays from its start relative to the transition window
   let local: number;
   if (transitionStart !== undefined && time >= transitionStart) {
-    local = Math.max(0, Math.min(clip.duration, (time - transitionStart) * speed));
+    local = Math.max(0, Math.min(clip.duration, time - transitionStart) * speed);
   } else {
-    local = Math.max(0, Math.min(clip.duration, (time - clip.start) * speed));
+    local = Math.max(0, Math.min(clip.duration, time - clip.start) * speed);
   }
   if (clip.isFrozen) return clip.freezeTime ?? inPoint;
   if (clip.reverse) {
-    const outPoint = clip.outPoint ?? inPoint + clip.duration;
+    const outPoint = clip.outPoint ?? inPoint + clip.duration * speed;
     return Math.max(inPoint, outPoint - local);
   }
   return inPoint + local;
@@ -51,7 +51,7 @@ export function resolveActiveClips(
     : [];
 
   if (videoClips.length === 0) {
-    videoClips = Object.values(storeClips).filter((c) => c.type === "video");
+    videoClips = Object.values(storeClips).filter((c) => c.type === "video" && !c.trackId.includes("overlay"));
   }
 
   videoClips.sort((a, b) => a.start - b.start);
@@ -143,6 +143,8 @@ export function isImageMedia(url?: string | null, name?: string | null): boolean
   return /\.(png|jpe?g|webp|gif|bmp|svg|avif)(\?.*)?$/i.test(testStr);
 }
 
+const pendingVideoLoads = new WeakMap<HTMLVideoElement, () => void>();
+
 export function syncVideoElement(
   video: HTMLVideoElement | null,
   url: string | null | undefined,
@@ -151,41 +153,22 @@ export function syncVideoElement(
   playbackRate: number = 1.0
 ): void {
   if (!video || !url) return;
-
-  if (video.src !== url && !video.src.endsWith(url)) {
-    video.src = url;
-    const onLoaded = () => {
-      video.removeEventListener("loadedmetadata", onLoaded);
-      try {
-        if (targetTime > 0 && Number.isFinite(targetTime) && targetTime < (video.duration || 9999)) {
-          video.currentTime = targetTime;
-        }
-      } catch {}
-      if (isPlaying) {
-        void video.play().catch(() => {});
-      }
-    };
-    video.addEventListener("loadedmetadata", onLoaded);
-    return;
-  }
-
-  if (video.playbackRate !== playbackRate) {
-    video.playbackRate = playbackRate;
-  }
-
-  if (isPlaying) {
-    if (video.paused && video.readyState >= 2) {
-      void video.play().catch(() => {});
-    }
-    if (!video.seeking && video.readyState >= 2 && Math.abs(video.currentTime - targetTime) > 0.35) {
-      video.currentTime = targetTime;
-    }
-  } else {
-    if (!video.paused) {
-      video.pause();
-    }
-    if (!video.seeking && video.readyState >= 1 && Math.abs(video.currentTime - targetTime) > 0.04) {
-      video.currentTime = targetTime;
-    }
-  }
+  const previous = pendingVideoLoads.get(video);
+  if (previous) video.removeEventListener("loadedmetadata", previous);
+  pendingVideoLoads.delete(video);
+  const sourceChanged = video.src !== url && !video.src.endsWith(url);
+  if (sourceChanged) { video.pause(); video.src = url; }
+  video.playbackRate = Number.isFinite(playbackRate) && playbackRate > 0 ? playbackRate : 1;
+  if (!isPlaying) video.pause();
+  const apply = () => {
+    if (pendingVideoLoads.get(video) === apply) pendingVideoLoads.delete(video);
+    if (!Number.isFinite(targetTime)) return;
+    const target = Math.max(0, Math.min(targetTime, Number.isFinite(video.duration) ? Math.max(0, video.duration - 0.001) : targetTime));
+    if (!video.seeking && Math.abs(video.currentTime - target) > (isPlaying && !sourceChanged ? 0.35 : 0.04)) video.currentTime = target;
+    if (isPlaying) void video.play().catch(() => {});
+  };
+  if (sourceChanged || video.readyState < 1) {
+    pendingVideoLoads.set(video, apply);
+    video.addEventListener("loadedmetadata", apply, { once: true });
+  } else apply();
 }

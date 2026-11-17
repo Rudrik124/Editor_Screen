@@ -87,6 +87,15 @@ export function handleSetOverlap(
   const clip = state.clips[clipId];
   if (!clip || clip.locked) return null;
 
+  const sourceTrack = state.tracks.find(t => t.id === clip.trackId);
+  const destination = state.tracks.find(t => t.id === trackId);
+  if (!sourceTrack || sourceTrack.locked || !destination || destination.locked) return null;
+  if (![scale, positionX, positionY].every(Number.isFinite) || scale <= 0) return null;
+  if (trackId === "video" && destination.clipIds.some(id => {
+    const other = state.clips[id];
+    return id !== clipId && other && other.start < clip.start + clip.duration && clip.start < other.start + other.duration;
+  })) return null;
+
   const prevTrackId = clip.trackId;
   const prevScale = clip.scale ?? 1.0;
   const prevX = clip.positionX ?? 0;
@@ -94,6 +103,7 @@ export function handleSetOverlap(
 
   // Move clip from old track to target track in tracks array
   const updatedTracks = state.tracks.map((t) => {
+    if (prevTrackId === trackId) return t;
     if (t.id === prevTrackId) {
       return { ...t, clipIds: t.clipIds.filter((id) => id !== clipId) };
     }
@@ -147,7 +157,7 @@ export function handleSetClipTransform(
   };
 
   const clip = state.clips[clipId];
-  if (!clip || clip.locked) return null;
+  if (!clip || clip.locked || state.tracks.find(t => t.id === clip.trackId)?.locked) return null;
 
   const prev = {
     scale: clip.scale ?? 1.0,

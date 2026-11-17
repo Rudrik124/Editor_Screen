@@ -1,3 +1,4 @@
+import { useLocalProject } from "./hooks/useLocalProject";
 import "./styles/tokens.css";
 import "./styles/layout.css";
 import "./styles/timeline.css";
@@ -23,6 +24,7 @@ import { AIAssistantPanel } from "./plugins/ai-assistant";
 import { UpgradePlanModal } from "./components/UpgradePlanModal";
 
 export function VeytrixEditor() {
+  const saveStatus = useLocalProject();
   // Bind global keyboard shortcuts (Ctrl+Z, Ctrl+Shift+Z, S, Del, Space)
   useEditorKeyboardShortcuts();
 
@@ -372,7 +374,7 @@ export function VeytrixEditor() {
 
   return (
     <main className="veytrix-editor">
-      <EditorHeader />
+      <EditorHeader saveStatus={saveStatus} />
       <div className="editor-body">
         <div className="upper-workspace">
           <MediaLibrary
@@ -387,6 +389,7 @@ export function VeytrixEditor() {
           <PreviewWorkspace
             media={media}
             textElements={text.elements}
+            onUpdateText={text.update}
             onCurrentTimeChange={(t) => setCurrentStoreTime(t)}
             onPlaybackControllerReady={setPlaybackController}
           />

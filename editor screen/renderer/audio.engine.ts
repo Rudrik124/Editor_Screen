@@ -31,7 +31,7 @@ function registerSoundTouch(context: BaseAudioContext): Promise<void> {
 
 function isAudioClip(clip: ClipModel): boolean {
   return (
-    (clip.type === "video" && clip.mediaType !== "image") ||
+    (clip.type === "video" && clip.mediaType !== "image" && !clip.isFrozen) ||
     clip.type === "audio" ||
     clip.type === "music"
   );
@@ -47,6 +47,9 @@ function getClipSignature(clip: ClipModel, trackMuted: boolean): string {
     clip.start,
     clip.duration,
     clip.inPoint ?? 0,
+    clip.outPoint,
+    clip.reverse ?? false,
+    clip.isFrozen ?? false,
     clip.speed ?? 1,
     clip.muted ?? false,
     trackMuted,
@@ -57,6 +60,7 @@ export class AudioEngine {
   private context: AudioContext | null = null;
   private buffers = new Map<string, Promise<AudioBuffer>>();
   private decodedBuffers = new Map<string, AudioBuffer>();
+  private reversedBuffers = new WeakMap<AudioBuffer, AudioBuffer>();
   private scheduled = new Map<string, ScheduledSource>();
   private generation = 0;
   private preparing = false;
@@ -170,7 +174,7 @@ export class AudioEngine {
       });
       if (needsPitchPreservation) await registerSoundTouch(context);
       if (generation !== this.generation || !useEditorStore.getState().isPlaying) return;
-      this.scheduleAtCurrentTime(state);
+      this.scheduleAtCurrentTime(useEditorStore.getState());
       const uniqueErrors = Array.from(new Set(loadErrors));
       this.onError(uniqueErrors.length ? uniqueErrors.join("; ") : null);
     } catch (error) {
@@ -252,7 +256,17 @@ export class AudioEngine {
       const rawVolume = clip.volume ?? 1;
       const volume = Number.isFinite(rawVolume) ? Math.max(0, Math.min(5, rawVolume)) : 1;
       const signature = getClipSignature(clip, trackMuted);
-      source.buffer = buffer;
+      if (clip.reverse) {
+        let reversed = this.reversedBuffers.get(buffer);
+        if (!reversed) {
+          reversed = context.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
+          for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+            reversed.copyToChannel(buffer.getChannelData(channel).slice().reverse(), channel);
+          }
+          this.reversedBuffers.set(buffer, reversed);
+        }
+        source.buffer = reversed;
+      } else source.buffer = buffer;
       const safePlaybackRate = Number.isFinite(playbackRate) && playbackRate > 0 ? playbackRate : 1;
       source.playbackRate.value = safePlaybackRate;
       gain.gain.value = volume;
@@ -271,7 +285,7 @@ export class AudioEngine {
       gain.connect(context.destination);
 
       const startAt = now + Math.max(0, clip.start - state.currentTime);
-      source.start(startAt, sourceOffset);
+      source.start(startAt, clip.reverse ? buffer.duration - sourceRange.end + (timelineStart - clip.start) * playbackRate : sourceOffset);
       source.stop(startAt + duration);
       this.scheduled.set(clip.id, { source, gain, stretchNode, signature, volume });
       source.onended = () => {

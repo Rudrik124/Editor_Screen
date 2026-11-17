@@ -83,6 +83,8 @@ describe("render API errors", () => {
       y: 85,
       preset: "none",
       alignment: "center",
+      bold: false,
+      italic: false,
     });
   });
 });

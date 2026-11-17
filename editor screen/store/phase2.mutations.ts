@@ -7,11 +7,11 @@ export function handleTrimClip(
   state: TimelineStateSlice,
   command: EditorCommand
 ): { newState: Partial<TimelineStateSlice>; inverse?: EditorCommand } | null {
-  const { clipId, edge, newTime, oldState } = command.payload as {
+  const { clipId, edge, newTime, restoreState } = command.payload as {
     clipId: string;
     edge: "left" | "right";
     newTime: number;
-    oldState?: {
+    restoreState?: {
       start: number;
       duration: number;
       inPoint?: number;
@@ -26,10 +26,12 @@ export function handleTrimClip(
     return null;
   }
 
-  const prevStart = oldState ? oldState.start : clip.start;
-  const prevDuration = oldState ? oldState.duration : clip.duration;
-  const prevIn = oldState ? oldState.inPoint : clip.inPoint;
-  const prevOut = oldState ? oldState.outPoint : clip.outPoint;
+  if (state.tracks.find(t => t.id === clip.trackId)?.locked || !Number.isFinite(newTime)) return null;
+  const previousRange = { start: clip.start, duration: clip.duration, inPoint: clip.inPoint, outPoint: clip.outPoint };
+  if (restoreState) {
+    return { newState: { clips: { ...state.clips, [clipId]: { ...clip, ...restoreState } } },
+      inverse: { id: `inv-${command.id}`, type: "TRIM_CLIP", timestamp: Date.now(), payload: { clipId, edge, newTime, restoreState: previousRange } } };
+  }
 
   let newStart = clip.start;
   let newDuration = clip.duration;
@@ -80,6 +82,17 @@ export function handleTrimClip(
       : newIn + newDuration * speed;
   }
 
+  if (clip.reverse && !isAudioClip && !clip.isFrozen) {
+    const sourceEnd = clip.outPoint ?? (clip.inPoint ?? 0) + clip.duration * speed;
+    if (edge === "left") {
+      newIn = clip.inPoint ?? 0;
+      newOut = sourceEnd - (newStart - clip.start) * speed;
+    } else {
+      newOut = sourceEnd;
+      newIn = sourceEnd - newDuration * speed;
+    }
+  }
+
   const updatedClip: ClipModel = {
     ...clip,
     start: newStart,
@@ -94,13 +107,8 @@ export function handleTrimClip(
     payload: {
       clipId,
       edge,
-      newTime: edge === "left" ? prevStart : prevStart + prevDuration,
-      oldState: {
-        start: newStart,
-        duration: newDuration,
-        inPoint: newIn,
-        outPoint: newOut,
-      },
+      newTime,
+      restoreState: previousRange,
     },
     timestamp: Date.now(),
   };
@@ -135,7 +143,10 @@ export function handleSetSpeed(
   const cleanSpeed = Math.max(0.1, Math.min(4.0, Number(speed) || 1.0));
   const oldSpeed = clip.speed ?? 1.0;
   const baseDuration = clip.baseDuration ?? clip.duration * oldSpeed;
-  const newDuration = baseDuration / cleanSpeed;
+  const retainedDuration = clip.outPoint !== undefined
+    ? clip.outPoint - (clip.inPoint ?? 0)
+    : clip.duration * oldSpeed;
+  const newDuration = retainedDuration / cleanSpeed;
 
   const updatedClip: ClipModel = {
     ...clip,

@@ -42,7 +42,7 @@ interface MediaLibraryProps {
   audioAssets?: AudioAsset[];
   onAddVideo?: (asset: VideoAsset) => void;
   onAddAudio?: (asset: AudioAsset) => void;
-  onAddText?: () => void;
+  onAddText?: (preset?: "neon") => void;
 }
 
 type NavTab = "media" | "audio" | "text" | "transitions" | "effects" | "filters" | "captions" | "canvas";
@@ -405,7 +405,7 @@ export function MediaLibrary({
               <button
                 type="button"
                 className="text-preset-card neon"
-                onClick={() => onAddText?.()}
+                onClick={() => onAddText?.("neon")}
               >
                 <span className="preset-preview-neon">NEON VIBE</span>
                 <span className="preset-name">+ Neon Style</span>

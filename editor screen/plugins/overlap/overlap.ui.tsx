@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { useOverlapState } from "./overlap.state";
 import { OverlapProcessor, PipPreset } from "./overlap.processor";
 
@@ -7,6 +7,7 @@ interface OverlapInspectorProps {
 }
 
 export function OverlapInspector({ clipId }: OverlapInspectorProps) {
+  const [error, setError] = useState<string | null>(null);
   const { clip, currentTrack, scale, positionX, positionY, rotation, opacity, canEdit } =
     useOverlapState(clipId);
 
@@ -38,7 +39,7 @@ export function OverlapInspector({ clipId }: OverlapInspectorProps) {
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontWeight: 600 }}>Picture-in-Picture & Transform</span>
-        {!isOverlay && (
+        {!isOverlay ? (
           <button
             type="button"
             disabled={!canEdit}
@@ -55,9 +56,12 @@ export function OverlapInspector({ clipId }: OverlapInspectorProps) {
           >
             + Move to PIP
           </button>
+        ) : (
+          <button type="button" disabled={!canEdit} onClick={() => setError(OverlapProcessor.moveToVideoTrack(clipId) ? null : "Cannot move: unlock the tracks and clear the overlapping video at this time.")}>Move to Video</button>
         )}
       </div>
 
+      {error && <div role="alert">{error}</div>}
       {/* Preset Grid */}
       <div>
         <label style={{ fontSize: "11px", color: "#94a3b8", display: "block", marginBottom: "6px" }}>

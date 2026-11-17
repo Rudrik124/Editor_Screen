@@ -141,6 +141,7 @@ export interface CaptionItem {
 }
 
 export interface TextData {
+  referenceWidth?: number;
   text: string;
   fontSize?: number;
   color?: string;

@@ -11,7 +11,7 @@ import { KeyboardShortcutsModal } from "./KeyboardShortcutsModal";
 import { useEditorStore } from "../store/editor.store";
 import "../styles/export-modal.css";
 
-export function EditorHeader() {
+export function EditorHeader({ saveStatus }: { saveStatus: string }) {
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [projectName, setProjectName] = useState("Veytrix Cut");
@@ -56,9 +56,9 @@ export function EditorHeader() {
             </div>
           )}
 
-          <div className="header-save-indicator" title="All edits autosaved locally and synced to cloud">
+          <div className="header-save-indicator" title={saveStatus}>
             <CloudCheck size={14} className="saved-icon" />
-            <span className="save-text">Saved</span>
+            <span className="save-text" role="status">{saveStatus}</span>
           </div>
         </div>
 

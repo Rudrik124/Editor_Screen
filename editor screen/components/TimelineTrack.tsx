@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 import {
   VideoCamera,
   PictureInPicture,
@@ -17,7 +17,7 @@ import { TimelineClip } from "./TimelineClip";
 import { useEditorStore } from "../store/editor.store";
 import { AudioProcessor } from "../plugins/audio";
 
-export function TimelineTrack({
+function TimelineTrackComponent({
   track,
   selectedClipId,
   onSelectClip,
@@ -159,3 +159,5 @@ export function TimelineTrack({
     </div>
   );
 }
+
+export const TimelineTrack = memo(TimelineTrackComponent);

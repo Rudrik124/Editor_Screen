@@ -330,7 +330,8 @@ def call_gemini_conversational(
     system_instruction: str,
     conversation_history: List[Any],
     api_key: str,
-    model_name: str
+    model_name: str,
+    timeout: int = 120
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """
     Calls Gemini API with both text generation and function calling.
@@ -362,12 +363,18 @@ def call_gemini_conversational(
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=20) as response:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
             res_data = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         error_body = e.read().decode("utf-8", errors="ignore")
         logger.error(f"Gemini API HTTP Error {e.code}: {error_body}")
         raise RuntimeError(f"Gemini API returned HTTP {e.code}: {error_body}")
+    except (urllib.error.URLError, TimeoutError) as e:
+        if "timed out" in str(e).lower():
+            logger.error(f"Gemini API timed out after {timeout}s: {e}")
+            raise TimeoutError(f"AI model request timed out after {timeout} seconds.")
+        logger.error(f"Gemini API Request Failed: {str(e)}")
+        raise
     except Exception as e:
         logger.error(f"Gemini API Request Failed: {str(e)}")
         raise
@@ -414,6 +421,8 @@ def process_ai_assistant_request(
 
     raw_tool_calls: List[Dict[str, Any]] = []
     response_text = ""
+    ai_timeout = getattr(settings, "AI_REQUEST_TIMEOUT_SECONDS", 120)
+    timed_out = False
 
     if api_key:
         try:
@@ -422,10 +431,29 @@ def process_ai_assistant_request(
                 system_instruction=system_prompt,
                 conversation_history=req.conversationHistory or [],
                 api_key=api_key,
-                model_name=model_name
+                model_name=model_name,
+                timeout=ai_timeout
             )
+        except TimeoutError as te:
+            logger.warning(f"Live Gemini API timed out: {te}")
+            timed_out = True
         except Exception as e:
             logger.warning(f"Live Gemini API unavailable, processing with conversational director: {e}")
+
+    if timed_out:
+        timeout_msg = f"The AI request timed out after {ai_timeout}s. Your credit has been refunded. Please try simplifying your prompt or breaking it into smaller steps."
+        return AIAssistantResponse(
+            success=False,
+            message=timeout_msg,
+            responseText=timeout_msg,
+            planSteps=[],
+            requiresConfirmation=False,
+            tool_calls=[],
+            commands=[],
+            validation_errors=[timeout_msg],
+            remaining_credits=remaining_credits,
+            model_used=model_name
+        )
 
     # If conversational query with no tool calls
     if not raw_tool_calls:

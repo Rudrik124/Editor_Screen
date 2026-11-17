@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 import { TimelineClip as TimelineClipData, ClipModel } from "../types/editor.types";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { ClipContextMenu } from "./ClipContextMenu";
@@ -11,7 +11,7 @@ import { badgeStyle, getClipVisibleThumbnails } from "./utils/clipThumbnails";
 import { getFilterCss } from "../plugins/filters/filterCss";
 import { AudioWaveform } from "./AudioWaveform";
 
-export function TimelineClip({
+function TimelineClipComponent({
   clip,
   selected = false,
   onSelect,
@@ -321,3 +321,5 @@ export function TimelineClip({
     </>
   );
 }
+
+export const TimelineClip = memo(TimelineClipComponent);

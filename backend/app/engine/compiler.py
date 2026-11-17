@@ -205,6 +205,10 @@ class TimelineCompiler:
                             "d": str(clip.duration)
                         }
                     ))
+                    if clip.type == "text":
+                        alpha_canvas = context.generate_label("txt_alpha")
+                        context.add_node(FilterNode(filter_name="format", inputs=[txt_canvas], outputs=[alpha_canvas], args={"pix_fmts": "rgba"}))
+                        txt_canvas = alpha_canvas
                     stream = FilterStream(name=txt_canvas, stream_type="video", duration=clip.duration)
 
                 # Execute Plugin Pipeline in strict sequence
@@ -556,8 +560,8 @@ class TimelineCompiler:
         if not media_url:
             return None
         
-        # Strip query parameters or hashes
-        clean_url = media_url.split("?")[0].split("#")[0]
+        # Local filenames may contain URL delimiters such as #.
+        clean_url = media_url if not media_url.startswith(("http://", "https://", "/uploads/")) else media_url.split("?")[0].split("#")[0]
 
         # 1. Check if local upload path or URL containing /uploads/
         if "/uploads/" in clean_url or clean_url.startswith("uploads/"):

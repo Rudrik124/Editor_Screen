@@ -8,13 +8,18 @@ def get_current_user_id(authorization: Optional[str] = Header(default=None)) -> 
     Extracts user_id from Supabase JWT token in Authorization header.
     If Supabase auth is not configured or in development, assigns a guest user ID.
     """
+    local_development = settings.ENVIRONMENT == "development"
     if not authorization or not authorization.startswith("Bearer "):
+        if not local_development:
+            raise HTTPException(status_code=401, detail="Authentication required")
         # Dev / Guest fallback for unauthenticated local editing
         return "00000000-0000-0000-0000-000000000001"
 
     token = authorization.split(" ")[1]
     jwt_secret = settings.effective_jwt_secret
     if not jwt_secret:
+        if not local_development:
+            raise HTTPException(status_code=503, detail="Authentication is not configured")
         # If secret not set in .env, decode unverified sub for development
         try:
             unverified_claims = jwt.get_unverified_claims(token)

@@ -189,6 +189,9 @@ export async function submitTimelineRender(
             y: c.text_data.y ?? 85,
             preset: c.text_data.preset ?? "none",
             alignment: c.text_data.alignment ?? "center",
+            referenceWidth: c.text_data.referenceWidth,
+            bold: c.text_data.bold ?? false,
+            italic: c.text_data.italic ?? false,
           }
         : c.content || c.type === "text"
         ? {
@@ -261,7 +264,7 @@ export async function saveProjectTimeline(
         projectId,
         title,
         tracks,
-        clips: Object.values(clips),
+        clips: Object.values(clips).map(c => ({ ...c, mediaUrl: c.renderMediaUrl || c.mediaUrl, textData: c.text_data })),
         playheadTime,
         duration,
       }),
@@ -277,7 +280,9 @@ export async function loadProjectTimeline(projectId: string): Promise<any | null
   try {
     const res = await fetch(`${API_BASE}/timeline/${projectId}`);
     if (!res.ok) return null;
-    return res.json();
+    const data = await res.json();
+    data.clips = data.clips.map((c: ClipModel & { textData?: ClipModel["text_data"] }) => ({ ...c, text_data: c.textData ?? c.text_data }));
+    return data;
   } catch (e) {
     console.warn("Failed to load timeline from backend:", e);
     return null;
