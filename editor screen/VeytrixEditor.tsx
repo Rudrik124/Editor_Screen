@@ -25,8 +25,6 @@ import { UpgradePlanModal } from "./components/UpgradePlanModal";
 
 export function VeytrixEditor() {
   const saveStatus = useLocalProject();
-  // Bind global keyboard shortcuts (Ctrl+Z, Ctrl+Shift+Z, S, Del, Space)
-  useEditorKeyboardShortcuts();
 
   const [media, setMedia] = useState<{
     url: string;
@@ -42,6 +40,7 @@ export function VeytrixEditor() {
     isPlaying: boolean;
     toggle: () => void;
   }>({ isPlaying: false, toggle: () => undefined });
+  useEditorKeyboardShortcuts(playbackController.toggle);
 
   const videoAssetsRef = useRef<VideoAsset[]>([]);
   const audioAssetsRef = useRef<AudioAsset[]>([]);

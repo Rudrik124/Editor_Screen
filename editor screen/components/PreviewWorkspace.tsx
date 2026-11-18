@@ -449,7 +449,9 @@ function resolveClipLayerTransform(clip: ClipModel, localTime: number): LayerTra
     renderFrame,
   ]);
 
-  const togglePlayback = useCallback(() => setIsPlaying(!isPlaying), [isPlaying, setIsPlaying]);
+  const togglePlayback = useCallback(() => {
+    setIsPlaying(!useEditorStore.getState().isPlaying);
+  }, [setIsPlaying]);
 
   useEffect(() => {
     onPlaybackControllerReady({ isPlaying, toggle: togglePlayback });
@@ -607,6 +609,7 @@ function resolveClipLayerTransform(clip: ClipModel, localTime: number): LayerTra
             type="button"
             className={`transport-play-btn ${isPlaying ? "playing" : ""}`}
             title={isPlaying ? "Pause (Space)" : "Play (Space)"}
+            data-playback-toggle=""
             onClick={togglePlayback}
             aria-label={isPlaying ? "Pause video" : "Play video"}
           >

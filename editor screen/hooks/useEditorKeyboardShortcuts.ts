@@ -3,22 +3,40 @@ import { useEditorStore } from "../store/editor.store";
 import { SplitProcessor } from "../plugins/split";
 import { DeleteProcessor } from "../plugins/delete";
 
-export function useEditorKeyboardShortcuts() {
+const spaceKeyControls =
+  "select, summary, audio[controls], video[controls], " +
+  "[role='checkbox'], [role='radio'], [role='switch'], " +
+  "[role='combobox'], [role='listbox'], [role='option'], [role='menuitem'], " +
+  "[role='menuitemcheckbox'], [role='menuitemradio'], [role='slider'], [role='tab']";
+
+export function useEditorKeyboardShortcuts(togglePlayback: () => void) {
   const undo = useEditorStore((state) => state.undo);
   const redo = useEditorStore((state) => state.redo);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Don't trigger shortcuts if user is typing in an input or textarea
       const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable)
-      ) {
+      const isInput = target instanceof HTMLInputElement;
+      const isEditable = target?.tagName === "TEXTAREA" || target?.isContentEditable;
+
+      if (event.key === " ") {
+        if (
+          event.defaultPrevented ||
+          isEditable ||
+          (isInput && target.type !== "file") ||
+          event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
+        ) {
+          return;
+        }
+        const control = target instanceof Element ? target.closest(spaceKeyControls) : null;
+        if (control) return;
+
+        event.preventDefault();
+        if (!event.repeat) togglePlayback();
         return;
       }
+
+      if (isInput || isEditable) return;
 
       const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
       const modKey = isMac ? event.metaKey : event.ctrlKey;
@@ -59,5 +77,5 @@ export function useEditorKeyboardShortcuts() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [undo, redo]);
+  }, [undo, redo, togglePlayback]);
 }
