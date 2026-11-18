@@ -12,6 +12,17 @@ from app.engine.ai_assistant_validator import (
     validate_tool_call,
     tool_call_to_editor_command
 )
+from app.engine.ai_fallback_director import (
+    run_fallback_director,
+    resolve_transition_alias
+)
+from app.engine.ai_tier_engine import (
+    detect_user_tier,
+    smpte_timecode_to_seconds,
+    db_to_linear_gain,
+    parse_db_expression,
+    parse_frames_expression
+)
 from app.engine.timeline_simulator import TimelineSimulator
 from app.schemas.ai_assistant import (
     AIAssistantPromptRequest,
@@ -22,13 +33,58 @@ from app.schemas.ai_assistant import (
 
 logger = logging.getLogger("veytrix.ai_assistant")
 
-SYSTEM_PERSONA_PROMPT = """You are Veytrix AI, an intelligent, professional video editing copilot dedicated solely to Veytrix Video Editor and video production.
+SYSTEM_PERSONA_PROMPT = """You are Veytrix AI, the intelligent, creative video editing copilot embedded directly inside Veytrix Video Editor.
 
-DOMAIN SCOPE & STRICT BOUNDARIES:
-- You ONLY assist with video editing, timeline operations, cinematography, pacing, transitions, color grading, audio mixing, subtitles, visual effects, and using Veytrix Editor features.
-- You MUST REFUSE any general queries outside video editing and video production (such as writing general Python code, solving math homework, answering politics/history questions, coding unrelated software, or general trivia).
-- When a user asks an out-of-scope question (e.g. "write python code", "what is the capital of France", "write an essay"), respond politely and concisely:
-  "I am Veytrix AI, specialized exclusively in video editing and timeline production. I cannot assist with general programming, trivia, or non-video tasks. Let me know if you need help trimming clips, adding transitions, color grading, or editing your project!"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+USER TIER: {user_tier_upper}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{user_tier_instructions}
+
+YOUR EDITORIAL PHILOSOPHY & RESPONSIBILITIES:
+- You are an expert director, editor, and colorist.
+- When the user asks you to edit their video, don't just execute robotically: provide an engaging, professional editorial response that explains the creative rationale (e.g., pacing, mood, visual rhythm, color harmony).
+- Format your response clearly with a helpful conversational introduction, bulleted steps, and why the specific choices were made!
+- If the user is a BEGINNER: Be warm, encouraging, celebratory, and guide them with simple terms and next steps.
+- If the user is an INTERMEDIATE: Be direct, fast, summarize technical gains, and respect their vocabulary.
+- If the user is a PROFESSIONAL: Be clinical, exact, note timecodes, dB gains, frame accuracy, and handle integrity.
+
+FULL CAPABILITIES & AVAILABLE FEATURES (25 INTEGRATED TOOLS):
+1. CLIP EDITING & ARRANGEMENT:
+   - `duplicate_clip`: Clones clip with timing, transforms, filters, and metadata.
+   - `split_clip`: Cuts a clip at an exact second or timecode into two contiguous clips.
+   - `trim_clip`: Modifies in-point (start) or out-point (end) boundaries.
+   - `replace_clip`: Swaps media asset while retaining all effects, keyframes, and timing.
+   - `rename_clip`: Renames clip labels for timeline organization.
+   - `lock_clip`: Protects or unlocks clips from accidental modifications.
+   - `delete_clip`: Removes clips from timeline.
+   - `undo_redo`: Command-bus history actions ('UNDO' or 'REDO').
+
+2. TIME & PLAYBACK MANIPULATION:
+   - `set_speed`: Dynamic speed changes from 0.1x to 4.0x (e.g. 0.5x slow-mo, 2.0x timelapse).
+   - `reverse_clip`: Reverses playback direction for video and audio.
+   - `freeze_clip`: Holds an exact freeze frame at a timestamp for a given duration (default 3.0s).
+
+3. MOTION, LAYERING & TRANSITIONS:
+   - `add_transition`: Connects clips at cut points. Available: `cross_dissolve`, `slide_left`, `slide_right`, `zoom_in`, `zoom_out`, `push_up`, `fade_black`, `fade_white`, `dip_to_color`, `instant_cut`.
+   - `remove_transition`: Clears transitions from a clip.
+   - `set_overlap`: Picture-in-Picture (PIP) and multi-track layering.
+   - `set_clip_transform`: Controls position (X/Y), scale (1.0 = 100%), opacity (0.0 to 1.0), and rotation angle.
+   - `add_keyframe`: Animates properties over time (opacity, scale, rotation, positionX, positionY, volume).
+   - `remove_keyframe`: Deletes animation keyframes by ID.
+   - `set_ratio`: Sets canvas aspect ratio (`16:9`, `9:16`, `1:1`, `4:5`, `21:9`).
+   - `set_cover`: Sets the project poster / thumbnail frame.
+
+4. AUDIO PIPELINE:
+   - `extract_audio`: Detaches audio from video into a dedicated audio track and mutes original.
+   - `set_audio_volume`: Sets gain from 0.0 to 5.0 (supports dB conversion: volume = 10^(dB/20)).
+   - `mute_clip`: Mutes or unmutes a specific clip.
+   - `mute_track`: Mutes or unmutes an entire audio or video track.
+
+5. VISUAL LOOKS, COLOR & SUBTITLES:
+   - `set_filters`: Color grading LUTs (`teal_and_orange`, `hollywood_gold`, `moody_film`, `noir_bw`, `cyberpunk`, `neon_blue`, `forest_green`, `ocean_blue`, `cinematic_lut`, `deep_contrast`).
+   - `set_effects`: Visual GLSL shaders (`vhs_classic`, `camera_shake`, `film_grain`, `blur`, `glow`).
+   - `auto_transcribe_captions`: Whisper-powered auto-transcription of speech to subtitles.
+   - `add_caption`: Manual custom subtitle blocks.
 
 TIMELINE STATE MANIFEST:
 - Total Project Duration: {duration}s ({duration_formatted})
@@ -38,25 +94,11 @@ TIMELINE STATE MANIFEST:
 - Active Clips on Timeline:
 {clips_formatted}
 
-CRITICAL EDITORIAL & BOUNDARY RULES:
-1. Video Awareness & Boundary Checking:
-   - Always check the exact duration of the clips on the timeline before applying any trims, cuts, or splits.
-   - If the user asks to trim or cut to a duration that is GREATER than the clip's actual length (for example, asking to trim to 1.50 mins / 90s when the video is only {duration}s / {duration_formatted}):
-     DO NOT CALL ANY TOOL!
-     Explain clearly:
-     "The current video is {duration}s ({duration_formatted}) long, which is shorter than the requested duration. It cannot be trimmed to that length. Would you like me to trim it to a shorter duration, such as 45 seconds or 1 minute?"
-   - If the user asks to split a clip outside its time boundaries (for example, split from 1 min 25s to 2 mins when the clip ends at {duration}s):
-     DO NOT CALL ANY TOOL! Explain that the requested timestamp is beyond the end of the video.
-2. Captions and Subtitles:
-   - When the user asks to "add captions", "add subtitles", "transcribe audio", or "create subtitles from speech":
-     CALL `auto_transcribe_captions`!
-     NEVER hallucinate dummy placeholder sentences with `add_caption` unless the user explicitly dictates the exact custom text to display.
-3. Splitting into N clips:
-   - Calculate step = total_duration / N.
-   - Issue (N - 1) split_clip calls at chronological cut timestamps (step * 1, step * 2, ..., step * (N-1)).
-   - Distribute transitions across the cut seams between contiguous clips.
-4. Explaining your actions:
-   - Provide a clear, natural language plan alongside any tool calls.
+CRITICAL RULES:
+1. Always output both an informative, encouraging natural language response text AND the corresponding tool calls!
+2. When multiple tasks are requested (trim, cut, transitions, effects), ALWAYS execute all of them in a coordinated sequence!
+3. If the user asks for "other", "different", or "best" transitions and effects, actively select creative, complementary choices across the clips!
+4. Strictly refuse out-of-scope non-video tasks (e.g. general Python coding, history, trivia).
 """
 
 def format_duration(seconds: float) -> str:
@@ -91,7 +133,7 @@ def parse_time_expression(text: str) -> Optional[float]:
 
     return None
 
-def build_system_instruction(req: AIAssistantPromptRequest) -> str:
+def build_system_instruction(req: AIAssistantPromptRequest, user_tier: str = "beginner") -> str:
     state = req.timelineState
     duration = float(state.get("duration", 0.0))
     aspect_ratio = state.get("aspectRatio", "16:9")
@@ -114,13 +156,35 @@ def build_system_instruction(req: AIAssistantPromptRequest) -> str:
             cstart = float(c.get("start", 0.0))
             cdur = float(c.get("duration", 0.0))
             cend = round(cstart + cdur, 2)
+            clocked = " [LOCKED]" if c.get("locked") else ""
             clip_lines.append(
-                f"  • Clip '{cname}' (ID: {cid}): Start={cstart}s, End={cend}s, Duration={cdur}s ({format_duration(cdur)})"
+                f"  • Clip '{cname}' (ID: {cid}): Start={cstart}s, End={cend}s, Duration={cdur}s ({format_duration(cdur)}){clocked}"
             )
 
     clips_formatted = "\n".join(clip_lines) if clip_lines else "  • No clips on timeline."
 
+    if user_tier == "professional":
+        user_tier_instructions = (
+            "- Direct, precise, frame-accurate responses.\n"
+            "- Accept SMPTE timecodes (HH:MM:SS:FF) and decibel (dB) gain instructions natively.\n"
+            "- Never explain basic editing jargon or second-guess standard film techniques (e.g. J-cuts, L-cuts, LUTs)."
+        )
+    elif user_tier == "intermediate":
+        user_tier_instructions = (
+            "- Efficient, concise one-line confirmations.\n"
+            "- Use editing terminology naturally (transitions, keyframes, b-roll, audio ducking, LUTs).\n"
+            "- Summarize batch operations clearly."
+        )
+    else:
+        user_tier_instructions = (
+            "- Warm, friendly, supportive guidance without overwhelming jargon.\n"
+            "- Explain concepts simply when requested (e.g. trimming, vertical ratio, background music).\n"
+            "- Reassure the user that changes are safe and undoable via Ctrl+Z."
+        )
+
     return SYSTEM_PERSONA_PROMPT.format(
+        user_tier_upper=user_tier.upper(),
+        user_tier_instructions=user_tier_instructions,
         duration=duration,
         duration_formatted=format_duration(duration),
         aspect_ratio=aspect_ratio,
@@ -129,15 +193,20 @@ def build_system_instruction(req: AIAssistantPromptRequest) -> str:
         clips_formatted=clips_formatted
     )
 
-def handle_intelligent_conversational_turn(
+def handle_safety_and_conversational_guardrails(
     prompt: str,
     req: AIAssistantPromptRequest,
     remaining_credits: int,
     model_name: str
 ) -> Optional[AIAssistantResponse]:
     """
-    Evaluates prompt for out-of-scope queries, impossible duration boundaries,
-    and direct video editing instructions.
+    Evaluates prompt ONLY for strict safety guardrails:
+    1. Out-of-scope non-video queries (e.g. general Python coding, history, trivia)
+    2. Affirmative plan confirmations ('proceed', 'apply', 'yes')
+    3. Trims exceeding total video duration (impossible boundary)
+    4. Splits completely outside video bounds (impossible boundary)
+
+    All real editing intents are passed directly to Gemini!
     """
     p_lower = prompt.lower().strip()
     state = req.timelineState
@@ -190,54 +259,31 @@ def handle_intelligent_conversational_turn(
             model_used=model_name
         )
 
-    # 2. Boundary Check: "trim ... to X"
-    if "trim" in p_lower:
-        parsed_target = parse_time_expression(prompt)
-        if parsed_target is not None:
-            effective_dur = clip_dur if clip_dur > 0 else total_dur
-            if parsed_target > (effective_dur + 0.1):
-                msg = (
-                    f"Your video is currently {effective_dur:.2f} seconds ({format_duration(effective_dur)}) long. "
-                    f"It cannot be trimmed to {parsed_target:.2f} seconds ({format_duration(parsed_target)}) because that exceeds "
-                    f"the total length of the video.\n\n"
-                    f"Would you like me to trim it to a shorter length, such as {max(10, int(effective_dur * 0.75))} seconds?"
-                )
-                return AIAssistantResponse(
-                    success=True,
-                    message=msg,
-                    responseText=msg,
-                    planSteps=[],
-                    requiresConfirmation=False,
-                    tool_calls=[],
-                    commands=[],
-                    validation_errors=[],
-                    remaining_credits=remaining_credits,
-                    model_used=model_name
-                )
-            else:
-                # Valid trim within bounds
-                new_time = round(parsed_target, 2)
-                plan = [f"Trim right edge of clip to {new_time}s"]
-                cmd = tool_call_to_editor_command("trim_clip", {
-                    "clipId": clip_id,
-                    "edge": "right",
-                    "newTime": new_time
-                })
-                resp_text = f"I will trim the video to {new_time} seconds ({format_duration(new_time)})."
-                return AIAssistantResponse(
-                    success=True,
-                    message=resp_text,
-                    responseText=resp_text,
-                    planSteps=plan,
-                    requiresConfirmation=False,
-                    tool_calls=[ToolCallRequestItem(name="trim_clip", args={"clipId": clip_id, "edge": "right", "newTime": new_time})],
-                    commands=[cmd],
-                    validation_errors=[],
-                    remaining_credits=remaining_credits,
-                    model_used=model_name
-                )
+    # Boundary Check: trim exceeding duration
+    parsed_target = parse_time_expression(prompt)
+    if "trim" in p_lower and parsed_target is not None:
+        effective_dur = clip_dur if clip_dur > 0 else total_dur
+        if parsed_target > (effective_dur + 0.1):
+            msg = (
+                f"Your video is currently {effective_dur:.2f} seconds ({format_duration(effective_dur)}) long. "
+                f"It cannot be trimmed to {parsed_target:.2f} seconds ({format_duration(parsed_target)}) because that exceeds "
+                f"the total length of the video.\n\n"
+                f"Would you like me to trim it to a shorter length, such as {max(10, int(effective_dur * 0.75))} seconds?"
+            )
+            return AIAssistantResponse(
+                success=True,
+                message=msg,
+                responseText=msg,
+                planSteps=[],
+                requiresConfirmation=False,
+                tool_calls=[],
+                commands=[],
+                validation_errors=[],
+                remaining_credits=remaining_credits,
+                model_used=model_name
+            )
 
-    # 3. Boundary Check: "split ... from X to Y"
+    # Boundary Check: split completely outside duration
     if "split" in p_lower and ("to" in p_lower or "from" in p_lower):
         m_range = re.findall(r"(\d+(?:\.\d+)?\s*(?:min|mins|minute|minutes|s|sec|secs|seconds)?)", p_lower)
         parsed_times = []
@@ -266,80 +312,7 @@ def handle_intelligent_conversational_turn(
                 model_used=model_name
             )
 
-    # 4. Captions & Subtitles
-    if any(k in p_lower for k in ["caption", "subtitle", "transcribe", "subtitles", "captions"]):
-        plan = ["Transcribe spoken audio dialogue into word-synchronized subtitle captions on the timeline"]
-        tool_item = ToolCallRequestItem(
-            name="auto_transcribe_captions",
-            args={"clipId": clip_id, "language": "auto"}
-        )
-        cmd = tool_call_to_editor_command("auto_transcribe_captions", {"clipId": clip_id, "language": "auto"})
-        resp_text = (
-            "I'm transcribing the audio dialogue in your video and generating synchronized subtitle captions for your timeline."
-        )
-        return AIAssistantResponse(
-            success=True,
-            message=resp_text,
-            responseText=resp_text,
-            planSteps=plan,
-            requiresConfirmation=False,
-            tool_calls=[tool_item],
-            commands=[cmd],
-            validation_errors=[],
-            remaining_credits=remaining_credits,
-            model_used=model_name
-        )
-
-    # 5. Multi-Split into N clips (e.g. "split into 5 clips, and different transitions")
-    m_split_n = re.search(r"split.*into\s*(\d+)\s*clips?", p_lower)
-    if m_split_n:
-        n_clips = max(2, min(10, int(m_split_n.group(1))))
-        effective_dur = clip_dur if clip_dur > 0 else total_dur
-        step = effective_dur / n_clips
-
-        simulator = TimelineSimulator(state)
-        palette = ["cross_dissolve", "fade_black", "zoom_in", "slide_left", "push_up", "fade_white"]
-        commands: List[EditorCommandSchema] = []
-        tool_items: List[ToolCallRequestItem] = []
-        plan: List[str] = []
-
-        # Issue (n_clips - 1) splits
-        for i in range(1, n_clips):
-            split_at = round(step * i, 2)
-            part_id = f"clip-part-{uuid.uuid4().hex[:6]}"
-            sim_ok, target_cid, _ = simulator.split_clip(clip_id, split_at, part_id)
-            actual_cid = target_cid or clip_id
-
-            split_args = {"clipId": actual_cid, "splitTime": split_at, "newClipId": part_id}
-            tool_items.append(ToolCallRequestItem(name="split_clip", args=split_args))
-            commands.append(tool_call_to_editor_command("split_clip", split_args))
-            plan.append(f"Cut clip at {split_at}s")
-
-        # If transitions requested
-        if "transition" in p_lower:
-            sim_clips = simulator.get_all_clip_ids()
-            seam_clips = sim_clips[:-1]
-            for i, cid in enumerate(seam_clips):
-                t_type = palette[i % len(palette)]
-                t_args = {"clipId": cid, "type": t_type, "duration": 0.5}
-                tool_items.append(ToolCallRequestItem(name="add_transition", args=t_args))
-                commands.append(tool_call_to_editor_command("add_transition", t_args))
-                plan.append(f"Apply '{t_type}' transition between segment {i+1} and {i+2}")
-
-        resp_text = f"I've planned out {len(commands)} editing steps to split the video into {n_clips} segments with smooth transitions between them."
-        return AIAssistantResponse(
-            success=True,
-            message=resp_text,
-            responseText=resp_text,
-            planSteps=plan,
-            requiresConfirmation=True,
-            tool_calls=tool_items,
-            commands=commands,
-            validation_errors=[],
-            remaining_credits=remaining_credits,
-            model_used=model_name
-        )
-
+    # Let ALL editing prompts pass through to Gemini!
     return None
 
 def call_gemini_conversational(
@@ -424,17 +397,23 @@ def process_ai_assistant_request(
     api_key = settings.GEMINI_API_KEY
     model_name = settings.AI_MODEL_NAME or "gemini-3.1-flash-lite"
 
-    # Pre-validation: intelligent boundaries & domain check
-    smart_turn = handle_intelligent_conversational_turn(
+    # Detect user tier from history or explicit override
+    history_prompts = [m.content for m in (req.conversationHistory or []) if m.role == "user"]
+    history_prompts.append(req.prompt)
+    detected_tier = req.userTier or detect_user_tier(history_prompts)
+
+    # Pre-validation: strict safety guardrails only (domain boundaries, confirmations)
+    guardrail_turn = handle_safety_and_conversational_guardrails(
         prompt=req.prompt,
         req=req,
         remaining_credits=remaining_credits,
         model_name=model_name
     )
-    if smart_turn is not None:
-        return smart_turn
+    if guardrail_turn is not None:
+        guardrail_turn.userTier = detected_tier
+        return guardrail_turn
 
-    system_prompt = build_system_instruction(req)
+    system_prompt = build_system_instruction(req, user_tier=detected_tier)
 
     raw_tool_calls: List[Dict[str, Any]] = []
     response_text = ""
@@ -469,24 +448,35 @@ def process_ai_assistant_request(
             commands=[],
             validation_errors=[timeout_msg],
             remaining_credits=remaining_credits,
-            model_used=model_name
+            model_used=model_name,
+            userTier=detected_tier
         )
 
     # If conversational query with no tool calls
     if not raw_tool_calls:
-        fallback_reply = response_text or "I reviewed your timeline. How would you like me to adjust your edit?"
-        return AIAssistantResponse(
-            success=True,
-            message=fallback_reply,
-            responseText=fallback_reply,
-            planSteps=[],
-            requiresConfirmation=False,
-            tool_calls=[],
-            commands=[],
-            validation_errors=[],
-            remaining_credits=remaining_credits,
-            model_used=model_name
-        )
+        if response_text and response_text.strip():
+            return AIAssistantResponse(
+                success=True,
+                message=response_text.strip(),
+                responseText=response_text.strip(),
+                planSteps=[],
+                requiresConfirmation=False,
+                tool_calls=[],
+                commands=[],
+                validation_errors=[],
+                remaining_credits=remaining_credits,
+                model_used=model_name,
+                userTier=detected_tier
+            )
+        else:
+            # Escalate to Tier 3 Semantic Fallback Director
+            return run_fallback_director(
+                prompt=req.prompt,
+                req=req,
+                detected_tier=detected_tier,
+                remaining_credits=remaining_credits,
+                model_name=model_name
+            )
 
     # Initialize Simulator to resolve multi-step chain dependencies
     simulator = TimelineSimulator(req.timelineState)
@@ -542,6 +532,17 @@ def process_ai_assistant_request(
             plan_steps.append(f"Trim clip boundary to {round(float(v_args.get('newTime', 0.0)), 2)}s")
             continue
 
+        elif name == "extract_audio":
+            plan_steps.append("Detach audio into dedicated soundtrack")
+
+        elif name == "mute_clip":
+            is_muted = args.get("muted", True)
+            plan_steps.append(f"{'Mute' if is_muted else 'Unmute'} clip audio")
+
+        elif name == "set_audio_volume":
+            vol = args.get("volume", 1.0)
+            plan_steps.append(f"Set audio volume to {int(vol * 100)}%")
+
         elif name == "auto_transcribe_captions":
             plan_steps.append("Transcribe spoken audio dialogue to subtitles")
 
@@ -572,14 +573,14 @@ def process_ai_assistant_request(
         cmd = tool_call_to_editor_command(name, validated_args or args)
         commands.append(cmd)
 
-    # Distribute transitions across seams
+    # Distribute transitions across seams if user specifically asked for generic / different transitions across cuts
+    # (e.g. "split into clips and add transitions" or "add different transitions")
+    # BUT if Gemini already returned specific add_transition commands (e.g. user asked for "swipe left" / "fade black"), PRESERVE THEM!
     user_prompt_lower = req.prompt.lower()
     all_sim_clip_ids = simulator.get_all_clip_ids()
-    if "transition" in user_prompt_lower and len(all_sim_clip_ids) > 1:
-        commands = [c for c in commands if c.type != "ADD_TRANSITION"]
-        validated_tool_calls = [c for c in validated_tool_calls if c.name != "add_transition"]
-        plan_steps = [s for s in plan_steps if "transition" not in s.lower()]
+    existing_transition_commands = [c for c in commands if c.type == "ADD_TRANSITION"]
 
+    if "transition" in user_prompt_lower and len(all_sim_clip_ids) > 1 and len(existing_transition_commands) == 0:
         cut_seam_clips = all_sim_clip_ids[:-1]
         for i, cid in enumerate(cut_seam_clips):
             selected_trans = transition_palette[i % len(transition_palette)]
@@ -595,7 +596,43 @@ def process_ai_assistant_request(
     success = len(commands) > 0 or len(errors) == 0
     requires_conf = len(commands) >= 4
 
-    summary_text = response_text or f"I've mapped out {len(commands)} editing step(s) to achieve this:"
+    # Build rich, persona-grounded narrative if Gemini returned only tool calls
+    if response_text and response_text.strip():
+        summary_text = response_text.strip()
+    else:
+        # Group actions by type for natural explanation
+        splits = [p for p in plan_steps if "cut" in p.lower() or "split" in p.lower()]
+        trans = [p for p in plan_steps if "transition" in p.lower()]
+        filters = [p for p in plan_steps if "filter" in p.lower()]
+        effects = [p for p in plan_steps if "effect" in p.lower()]
+        audio = [p for p in plan_steps if "audio" in p.lower() or "mute" in p.lower() or "volume" in p.lower()]
+        captions = [p for p in plan_steps if "transcribe" in p.lower() or "subtitle" in p.lower() or "caption" in p.lower()]
+
+        highlights = []
+        if audio:
+            highlights.append("isolated and leveled the audio track")
+        if captions:
+            highlights.append("generated synchronized subtitle captions from speech")
+        if splits:
+            highlights.append(f"divided your timeline into {len(splits) + 1} balanced scenes")
+        if trans:
+            highlights.append(f"connected the cut seams with dynamic transitions ({len(trans)})")
+        if filters:
+            highlights.append("color-graded the footage with atmospheric cinematic LUTs")
+        if effects:
+            highlights.append("added kinetic visual effects")
+
+        action_phrase = ", ".join(highlights) if highlights else f"prepared {len(commands)} editing adjustments"
+
+        if detected_tier == "beginner":
+            summary_text = (
+                f"🎬 All set! I have {action_phrase} to give your video a polished, engaging flow.\n\n"
+                f"Review the plan below and click **Apply Plan** when you're ready to preview it on your timeline!"
+            )
+        elif detected_tier == "intermediate":
+            summary_text = f"✓ Ready: {action_phrase} across {len(commands)} non-destructive timeline commands."
+        else:
+            summary_text = f"Sequence mapped: {action_phrase} ({len(commands)} edit commands prepared with verified handles and boundary checks)."
 
     return AIAssistantResponse(
         success=success,
@@ -607,5 +644,6 @@ def process_ai_assistant_request(
         commands=commands,
         validation_errors=errors,
         remaining_credits=remaining_credits,
-        model_used=model_name
+        model_used=model_name,
+        userTier=detected_tier
     )

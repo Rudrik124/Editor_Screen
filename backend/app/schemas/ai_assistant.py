@@ -182,6 +182,7 @@ class AIAssistantPromptRequest(BaseModel):
     conversationHistory: List[ChatMessageSchema] = Field(default_factory=list, description="Prior conversational context")
     projectId: Optional[str] = None
     userId: Optional[str] = None
+    userTier: Optional[str] = Field(default=None, description="Explicit user tier override: 'beginner', 'intermediate', or 'professional'")
 
 class EditorCommandSchema(BaseModel):
     id: str
@@ -199,4 +200,6 @@ class AIAssistantResponse(BaseModel):
     commands: List[EditorCommandSchema] = Field(default_factory=list)
     validation_errors: List[str] = Field(default_factory=list)
     remaining_credits: int = 50
+    credits_charged: int = Field(default=0, description="Amount of credits deducted for the actual work performed (0 if conversational or no changes)")
     model_used: str = "gemini-3.1-flash-lite"
+    userTier: str = Field(default="beginner", description="Detected or effective user tier: 'beginner', 'intermediate', or 'professional'")

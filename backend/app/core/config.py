@@ -94,7 +94,7 @@ class Settings(BaseSettings):
 
     # AI Assistant (Phase 6)
     GEMINI_API_KEY: str = ""
-    AI_MODEL_NAME: str = "gemini-3.1-flash-lite"
+    AI_MODEL_NAME: str = "gemini-flash-lite-latest"
     AI_REQUEST_TIMEOUT_SECONDS: int = 120
 
     def get_ffmpeg_path(self) -> str:

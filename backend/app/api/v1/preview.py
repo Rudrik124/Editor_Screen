@@ -122,7 +122,7 @@ def generate(job, source: Path, request: ReverseRequest):
             start = max(request.start, end - 4)
             run(["-ss", str(start), "-t", str(end - start + 1 / 30), "-i", str(source),
                  "-map", "0:v:0", "-an", "-vf",
-                 f"scale=w='min(1280,iw)':h='min(720,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,fps=30,trim=duration={end - start},reverse,setpts=PTS-STARTPTS",
+                 f"scale=w='trunc(min(1280,iw)/2)*2':h='trunc(min(720,ih)/2)*2',fps=30,trim=duration={end - start},reverse,setpts=PTS-STARTPTS",
                  "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-pix_fmt", "yuv420p", "-threads", "2",
                  str(directory / f"part{index}.mp4")])
             job["progress"] = min(94, int((index + 1) / count * 94))

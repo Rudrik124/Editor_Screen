@@ -24,7 +24,9 @@ export interface AssistantApiResponse {
   commands: EditorCommand[];
   validation_errors: string[];
   remaining_credits: number;
+  credits_charged?: number;
   model_used: string;
+  userTier?: string;
 }
 
 export async function sendPromptToAssistant(

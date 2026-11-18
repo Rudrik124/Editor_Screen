@@ -131,7 +131,6 @@ export const AIAssistantPanel: React.FC = () => {
     setMessages((prev) => [...prev, { id: userMsgId, sender: "user", text: trimmed }]);
     setInputPrompt("");
     setIsProcessing(true);
-    decrementOptimistic();
 
     try {
       const manifest = {

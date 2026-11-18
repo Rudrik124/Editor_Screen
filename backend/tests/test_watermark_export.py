@@ -105,31 +105,33 @@ def test_missing_or_invalid_watermark_fails_compilation(tmp_path):
         compiler.compile(request, "export.mp4", watermark)
 
 
-@pytest.mark.asyncio
-async def test_render_submission_queues_watermark_and_serves_mp4(tmp_path, monkeypatch):
-    monkeypatch.setattr(settings, "EXPORT_DIR", tmp_path)
-    monkeypatch.setattr(render, "job_queue", JobQueue())
-    monkeypatch.setattr("app.db.export_repository.get_supabase", lambda: None)
-    source = tmp_path / "source.png"
-    Image.new("RGB", (320, 240)).save(source)
-    request = TimelineExportRequest(
-        width=320, height=240, fps=10,
-        tracks=[{"id": "video", "label": "Video", "type": "video", "clipIds": ["image"]}],
-        clips=[{"id": "image", "trackId": "video", "name": "Image", "type": "image",
-                "mediaUrl": str(source), "start": 0, "duration": 1}],
-        watermark={"enabled": True, "source": "official", "x": 1, "y": 1, "width": 0.3, "opacity": 1},
-    )
-    job = await render.create_render_job(request, "watermark-test-user")
-    request.watermark.opacity = 0
+def test_render_submission_queues_watermark_and_serves_mp4(tmp_path, monkeypatch):
+    async def _run():
+        monkeypatch.setattr(settings, "EXPORT_DIR", tmp_path)
+        monkeypatch.setattr(render, "job_queue", JobQueue())
+        monkeypatch.setattr("app.db.export_repository.get_supabase", lambda: None)
+        source = tmp_path / "source.png"
+        Image.new("RGB", (320, 240)).save(source)
+        request = TimelineExportRequest(
+            width=320, height=240, fps=10,
+            tracks=[{"id": "video", "label": "Video", "type": "video", "clipIds": ["image"]}],
+            clips=[{"id": "image", "trackId": "video", "name": "Image", "type": "image",
+                    "mediaUrl": str(source), "start": 0, "duration": 1}],
+            watermark={"enabled": True, "source": "official", "x": 1, "y": 1, "width": 0.3, "opacity": 1},
+        )
+        job = await render.create_render_job(request, "watermark-test-user")
+        request.watermark.opacity = 0
 
-    async with asyncio.timeout(30):
-        while job.status in {JobStatus.PENDING, JobStatus.PROCESSING}:
-            await asyncio.sleep(0.02)
-    assert job.status == JobStatus.COMPLETED, job.error
-    response = await render.download_rendered_video(job.id)
-    png = run_ffmpeg([
-        settings.get_ffmpeg_path(), "-v", "error", "-i", response.path,
-        "-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "pipe:1",
-    ])
-    with Image.open(BytesIO(png)) as frame:
-        assert frame.crop((215, 135, 315, 237)).getextrema()[0][1] > 30
+        async with asyncio.timeout(30):
+            while job.status in {JobStatus.PENDING, JobStatus.PROCESSING}:
+                await asyncio.sleep(0.02)
+        assert job.status == JobStatus.COMPLETED, job.error
+        response = await render.download_rendered_video(job.id)
+        png = run_ffmpeg([
+            settings.get_ffmpeg_path(), "-v", "error", "-i", response.path,
+            "-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "pipe:1",
+        ])
+        with Image.open(BytesIO(png)) as frame:
+            assert frame.crop((215, 135, 315, 237)).getextrema()[0][1] > 30
+
+    asyncio.run(_run())

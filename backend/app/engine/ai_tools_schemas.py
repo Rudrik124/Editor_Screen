@@ -41,14 +41,14 @@ GEMINI_TOOLS_SCHEMA = [
             },
             {
                 "name": "add_transition",
-                "description": "Applies a transition effect (e.g. cross_dissolve, fade_black, zoom_in, slide_left) to a clip.",
+                "description": "Applies a transition effect between clips. Maps synonyms: 'swipe left'/'wipe left' -> 'slide_left', 'swipe right' -> 'slide_right', 'push up' -> 'push_up', 'fade out'/'fade to black' -> 'fade_black', 'fade to white' -> 'fade_white', 'dissolve'/'crossfade' -> 'cross_dissolve', 'zoom' -> 'zoom_in'.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
                         "clipId": {"type": "STRING", "description": "Target clip ID"},
                         "type": {
                             "type": "STRING",
-                            "description": "Transition type (e.g. cross_dissolve, fade_black, fade_white, zoom_in, zoom_out, slide_left, push_up)"
+                            "description": "Supported transition type: cross_dissolve, fade_black, fade_white, zoom_in, zoom_out, slide_left, slide_right, push_up, dip_to_color, instant_cut"
                         },
                         "duration": {"type": "NUMBER", "description": "Duration in seconds (e.g. 0.5)"}
                     },
@@ -265,7 +265,7 @@ GEMINI_TOOLS_SCHEMA = [
             },
             {
                 "name": "set_effects",
-                "description": "Applies visual effects (e.g. blur, zoom, glitch, shake) to a clip.",
+                "description": "Applies visual effects to a clip. Supported effect types: 'vhs_classic' (retro VHS glitch), 'camera_shake' (kinetic action shake), 'film_grain' (cinematic 35mm grain), 'blur', 'glow'. Example: [{'type': 'vhs_classic', 'parameters': {}}]",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
@@ -273,7 +273,7 @@ GEMINI_TOOLS_SCHEMA = [
                         "effects": {
                             "type": "ARRAY",
                             "items": {"type": "OBJECT"},
-                            "description": "List of effect objects: [{'type': 'blur'}]"
+                            "description": "List of effect objects: [{'type': 'vhs_classic'}]"
                         }
                     },
                     "required": ["clipId", "effects"]
@@ -281,7 +281,7 @@ GEMINI_TOOLS_SCHEMA = [
             },
             {
                 "name": "set_filters",
-                "description": "Applies color grading LUTs / filters (e.g. cinematic_lut, teal_and_orange, noir_bw).",
+                "description": "Applies color grading LUTs / filters to a clip. Supported types: 'teal_and_orange' (blockbuster look), 'hollywood_gold' (warm glow), 'moody_film' (dramatic film tones), 'noir_bw' (black and white), 'cyberpunk' (neon purple/magenta), 'neon_blue', 'forest_green', 'ocean_blue', 'cinematic_lut', 'deep_contrast'. Example: [{'type': 'teal_and_orange', 'intensity': 1.0}]",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
@@ -289,7 +289,7 @@ GEMINI_TOOLS_SCHEMA = [
                         "filters": {
                             "type": "ARRAY",
                             "items": {"type": "OBJECT"},
-                            "description": "List of filter objects: [{'type': 'cinematic_lut', 'intensity': 1.0}]"
+                            "description": "List of filter objects: [{'type': 'teal_and_orange', 'intensity': 1.0}]"
                         }
                     },
                     "required": ["clipId", "filters"]

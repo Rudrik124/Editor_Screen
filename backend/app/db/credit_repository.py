@@ -77,10 +77,13 @@ def log_ai_command(
     prompt: str,
     parsed_commands: Any,
     status: str = "success",
-    error_message: Optional[str] = None
+    error_message: Optional[str] = None,
+    user_tier: Optional[str] = None,
+    latency_ms: Optional[int] = None,
+    model_used: Optional[str] = None
 ) -> Optional[str]:
     """
-    Logs the AI interaction to public.ai_command_log
+    Logs the AI interaction to public.ai_command_log with RLHF and user tier metrics.
     """
     supabase = get_supabase_client()
     if not supabase:
@@ -93,7 +96,10 @@ def log_ai_command(
             "prompt": prompt,
             "parsed_commands": parsed_commands,
             "status": status,
-            "error_message": error_message
+            "error_message": error_message,
+            "user_tier": user_tier or "beginner",
+            "response_latency_ms": latency_ms,
+            "model_used": model_used
         }
         res = supabase.table("ai_command_log").insert(data).execute()
         if res.data and len(res.data) > 0:
@@ -101,3 +107,30 @@ def log_ai_command(
     except Exception as e:
         logger.debug(f"ai_command_log insert skipped: {e}")
     return None
+
+def update_ai_feedback(
+    log_id: str,
+    feedback: str,
+    modified_commands: Optional[Any] = None,
+    undo_count: int = 0
+) -> bool:
+    """
+    Updates public.ai_command_log with user feedback ('accepted', 'rejected', 'modified', 'undone')
+    for DPO / preference dataset generation.
+    """
+    supabase = get_supabase_client()
+    if not supabase or not log_id:
+        return False
+
+    try:
+        data: Dict[str, Any] = {
+            "user_feedback": feedback,
+            "undo_count": undo_count
+        }
+        if modified_commands is not None:
+            data["modified_commands"] = modified_commands
+        supabase.table("ai_command_log").update(data).eq("id", log_id).execute()
+        return True
+    except Exception as e:
+        logger.debug(f"update_ai_feedback failed: {e}")
+        return False
