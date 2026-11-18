@@ -63,57 +63,79 @@ class FFmpegRunner:
                 await progress_callback(100, None, None)
             return True
 
+        stderr_chunks: list[bytes] = []
+
         async def read_stdout():
+            buffer = ""
             current_frame = 0
             current_fps = 0.0
+            last_reported_pct = -1
             
             while True:
-                line = await process.stdout.readline()
-                if not line:
+                chunk = await process.stdout.read(4096)
+                if not chunk:
                     break
-                decoded = line.decode("utf-8", errors="replace").strip()
-                if not decoded:
-                    continue
+                buffer += chunk.decode("utf-8", errors="replace")
+                lines = buffer.split("\n")
+                buffer = lines.pop()  # Retain partial trailing line
 
-                # Progress output format from -progress pipe:1:
-                # frame=120
-                # fps=30.0
-                # out_time_us=4000000
-                # progress=continue/end
-                if decoded.startswith("frame="):
-                    try:
-                        current_frame = int(decoded.split("=")[1].strip())
-                    except ValueError:
-                        pass
-                elif decoded.startswith("fps="):
-                    try:
-                        current_fps = float(decoded.split("=")[1].strip())
-                    except ValueError:
-                        pass
-                elif decoded.startswith("out_time_us="):
-                    try:
-                        time_us = int(decoded.split("=")[1].strip())
-                        pct = min(100, max(0, int((time_us / total_duration_us) * 100)))
+                for raw_line in lines:
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+
+                    # Progress output format from -progress pipe:1:
+                    # frame=120
+                    # fps=30.0
+                    # out_time_us=4000000
+                    # progress=continue/end
+                    if line.startswith("frame="):
+                        try:
+                            current_frame = int(line.split("=")[1].strip())
+                        except ValueError:
+                            pass
+                    elif line.startswith("fps="):
+                        try:
+                            current_fps = float(line.split("=")[1].strip())
+                        except ValueError:
+                            pass
+                    elif line.startswith("out_time_us="):
+                        try:
+                            time_us = int(line.split("=")[1].strip())
+                            pct = min(100, max(0, int((time_us / total_duration_us) * 100)))
+                            if pct != last_reported_pct and progress_callback:
+                                last_reported_pct = pct
+                                await progress_callback(pct, current_frame, current_fps)
+                        except ValueError:
+                            pass
+                    elif line.startswith("out_time_ms="):
+                        try:
+                            time_val = int(line.split("=")[1].strip())
+                            if time_val > total_duration_seconds * 1000:
+                                pct = min(100, max(0, int((time_val / total_duration_us) * 100)))
+                            else:
+                                pct = min(100, max(0, int((time_val / (total_duration_seconds * 1000)) * 100)))
+                            if pct != last_reported_pct and progress_callback:
+                                last_reported_pct = pct
+                                await progress_callback(pct, current_frame, current_fps)
+                        except ValueError:
+                            pass
+                    elif line == "progress=end":
                         if progress_callback:
-                            await progress_callback(pct, current_frame, current_fps)
-                    except ValueError:
-                        pass
-                elif decoded == "progress=end":
-                    if progress_callback:
-                        await progress_callback(100, current_frame, current_fps)
+                            await progress_callback(100, current_frame, current_fps)
 
         async def read_stderr():
-            chunks = []
             while True:
-                line = await process.stderr.readline()
-                if not line:
+                chunk = await process.stderr.read(4096)
+                if not chunk:
                     break
-                chunks.append(line)
-            return b"".join(chunks)
+                stderr_chunks.append(chunk)
+                if len(stderr_chunks) > 50:
+                    del stderr_chunks[:-20]
 
         try:
-            _, _, stderr_bytes = await asyncio.wait_for(
-                asyncio.gather(read_stdout(), process.wait(), read_stderr()),
+            await asyncio.wait_for(
+                asyncio.gather(read_stdout(), read_stderr(), process.wait()),
                 timeout=timeout_seconds
             )
         except asyncio.TimeoutError:
@@ -125,6 +147,7 @@ class FFmpegRunner:
             await process.wait()
             raise
 
+        stderr_bytes = b"".join(stderr_chunks)
         if process.returncode != 0:
             err_msg = stderr_bytes.decode("utf-8", errors="replace")[-2000:].strip()
             if not err_msg:

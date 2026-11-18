@@ -339,7 +339,7 @@ export function VeytrixEditor() {
         }
         const assetWithRenderUrl: VideoAsset = {
           ...asset,
-          renderUrl: renderUrl || asset.url,
+          renderUrl: renderUrl || (asset.url.startsWith("blob:") ? undefined : asset.url),
           mediaType: "video",
         };
         setVideoAssets((current) => [...current, assetWithRenderUrl]);
@@ -354,6 +354,30 @@ export function VeytrixEditor() {
           type: "video",
           name: assetWithRenderUrl.name,
         });
+
+        // If background upload succeeded after initial sync or if deferred, retry ensuring store clips get updated renderMediaUrl
+        if (!renderUrl) {
+          uploadAsset(file).then((uploaded) => {
+            const serverUrl = uploaded.mediaUrl;
+            setVideoAssets((prev) =>
+              prev.map((a) => (a.id === asset.id ? { ...a, renderUrl: serverUrl } : a))
+            );
+            const currentClips = useEditorStore.getState().clips;
+            const updatedClips = { ...currentClips };
+            let changed = false;
+            for (const [id, c] of Object.entries(updatedClips)) {
+              if (c.mediaUrl === asset.url || c.assetId === asset.id) {
+                updatedClips[id] = { ...c, renderMediaUrl: serverUrl };
+                changed = true;
+              }
+            }
+            if (changed) {
+              useEditorStore.getState().setTracksAndClips(useEditorStore.getState().tracks, updatedClips);
+            }
+          }).catch((err) => {
+            console.error("Secondary upload attempt failed:", err);
+          });
+        }
       } catch (error) {
         console.error("Unable to import uploaded video.", error);
         setUploadError(
@@ -377,7 +401,7 @@ export function VeytrixEditor() {
         const imageAsset: VideoAsset = {
           id: `image-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           url: objectUrl,
-          renderUrl: renderUrl || objectUrl,
+          renderUrl: renderUrl || (objectUrl.startsWith("blob:") ? undefined : objectUrl),
           name: file.name,
           duration: 4.0,
           thumbnailUrl: objectUrl,
@@ -397,6 +421,29 @@ export function VeytrixEditor() {
           type: "image",
           name: imageAsset.name,
         });
+
+        if (!renderUrl) {
+          uploadAsset(file).then((uploaded) => {
+            const serverUrl = uploaded.mediaUrl;
+            setVideoAssets((prev) =>
+              prev.map((a) => (a.id === imageAsset.id ? { ...a, renderUrl: serverUrl } : a))
+            );
+            const currentClips = useEditorStore.getState().clips;
+            const updatedClips = { ...currentClips };
+            let changed = false;
+            for (const [id, c] of Object.entries(updatedClips)) {
+              if (c.mediaUrl === objectUrl || c.assetId === imageAsset.id) {
+                updatedClips[id] = { ...c, renderMediaUrl: serverUrl };
+                changed = true;
+              }
+            }
+            if (changed) {
+              useEditorStore.getState().setTracksAndClips(useEditorStore.getState().tracks, updatedClips);
+            }
+          }).catch((err) => {
+            console.error("Secondary upload attempt for image failed:", err);
+          });
+        }
       } catch (error) {
         console.error("Unable to import uploaded image.", error);
         setUploadError(

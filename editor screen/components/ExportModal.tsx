@@ -67,6 +67,18 @@ export function ExportModal({
     setDownloadUrl(null);
 
     const state = useEditorStore.getState();
+    const clipsList = Object.values(clips);
+    const unuploadedClip = clipsList.find((c) =>
+      ((c.type as string) === "video" || (c.type as string) === "image" || c.type === "audio" || c.type === "music") &&
+      (!c.renderMediaUrl && (!c.mediaUrl || c.mediaUrl.startsWith("blob:")))
+    );
+    if (unuploadedClip) {
+      setErrorMessage(`Clip "${unuploadedClip.name || unuploadedClip.id}" is still syncing with backend storage. Please wait a moment and try again.`);
+      setIsExporting(false);
+      setJobStatus("FAILED");
+      return;
+    }
+
     const baseDims = RatioProcessor.getDimensions(state.aspectRatio);
 
     const settings: ExportSettings = {
@@ -91,28 +103,85 @@ export function ExportModal({
       const rawApi = (import.meta.env.VITE_API_URL as string | undefined) || "http://localhost:8000";
       const apiBase = `${rawApi.replace(/\/+$/, "")}/api/v1`;
       let polling = true;
+      let consecutiveErrors = 0;
+      let consecutive404s = 0;
+      let secondsWithoutProgress = 0;
+      let lastProgress = 0;
+
+      const stopAll = () => {
+        polling = false;
+        if (pollingIntervalRef.current !== null) {
+          window.clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+        wsRef.current?.close();
+        wsRef.current = null;
+        setIsExporting(false);
+      };
+
       const pollJob = async () => {
+        if (!polling) return;
         try {
           const res = await fetch(`${apiBase}/render/jobs/${job.id}`);
-          if (!res.ok) return;
+          if (res.status === 404) {
+            consecutive404s += 1;
+            if (consecutive404s >= 4) {
+              stopAll();
+              setErrorMessage("Render job not found on server (backend may have restarted). Please retry.");
+              setJobStatus("FAILED");
+              return;
+            }
+            return;
+          }
+
+          if (!res.ok) {
+            consecutiveErrors += 1;
+            if (consecutiveErrors >= 6) {
+              stopAll();
+              setErrorMessage(`Render backend error (${res.status}). Please check backend console.`);
+              setJobStatus("FAILED");
+            }
+            return;
+          }
+
+          consecutiveErrors = 0;
+          consecutive404s = 0;
           const current: RenderJobResponse = await res.json();
           setProgress(current.progress);
           setJobStatus(current.status);
-          if (current.status === "COMPLETED") {
-            polling = false;
-            setDownloadUrl(`${apiBase}/render/jobs/${job.id}/download`);
-            setIsExporting(false);
-          } else if (current.status === "FAILED") {
-            polling = false;
-            setErrorMessage(current.error || "Rendering failed. Check the backend terminal for details.");
-            setIsExporting(false);
+
+          if (current.progress > lastProgress) {
+            lastProgress = current.progress;
+            secondsWithoutProgress = 0;
           }
-        } catch {
-          // The WebSocket remains the primary progress channel.
+
+          if (current.status === "COMPLETED") {
+            stopAll();
+            setDownloadUrl(`${apiBase}/render/jobs/${job.id}/download`);
+          } else if (current.status === "FAILED") {
+            stopAll();
+            setErrorMessage(current.error || "Rendering failed. Check backend terminal for details.");
+          }
+        } catch (fetchErr) {
+          consecutiveErrors += 1;
+          if (consecutiveErrors >= 6) {
+            stopAll();
+            setErrorMessage("Cannot connect to backend on http://localhost:8000. Is the server running?");
+            setJobStatus("FAILED");
+          }
         }
       };
+
       pollingIntervalRef.current = window.setInterval(() => {
-        if (polling) void pollJob();
+        if (!polling) return;
+        secondsWithoutProgress += 1;
+        if (secondsWithoutProgress >= 180 && lastProgress === 0) {
+          stopAll();
+          setErrorMessage("Render job timed out waiting for FFmpeg. Check backend terminal logs.");
+          setJobStatus("FAILED");
+          return;
+        }
+        void pollJob();
       }, 1000);
 
       wsRef.current = subscribeToJobProgress(
@@ -120,22 +189,16 @@ export function ExportModal({
         (msg) => {
           setProgress(msg.progress);
           setJobStatus(msg.status);
+          if (msg.progress > lastProgress) {
+            lastProgress = msg.progress;
+            secondsWithoutProgress = 0;
+          }
           if (msg.status === "COMPLETED") {
-            polling = false;
-            if (pollingIntervalRef.current !== null) {
-              window.clearInterval(pollingIntervalRef.current);
-              pollingIntervalRef.current = null;
-            }
+            stopAll();
             setDownloadUrl(`${apiBase}/render/jobs/${job.id}/download`);
-            setIsExporting(false);
           } else if (msg.status === "FAILED") {
-            polling = false;
-            if (pollingIntervalRef.current !== null) {
-              window.clearInterval(pollingIntervalRef.current);
-              pollingIntervalRef.current = null;
-            }
+            stopAll();
             setErrorMessage(msg.error || "Rendering failed. Check the backend terminal for details.");
-            setIsExporting(false);
           }
         },
         () => {

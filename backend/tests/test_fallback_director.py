@@ -129,6 +129,15 @@ def test_fallback_duplicate(test_timeline):
     assert len(res.commands) == 1
     assert res.commands[0].type == "DUPLICATE_CLIP"
 
+def test_fallback_pip(test_timeline):
+    req = AIAssistantPromptRequest(prompt="add this clip to pip or overlay", timelineState=test_timeline)
+    res = run_fallback_director(req.prompt, req, "intermediate", 50, "test-model")
+    assert res.success is True
+    assert len(res.commands) == 1
+    assert res.commands[0].type == "SET_OVERLAP"
+    assert res.commands[0].payload["trackId"] == "overlay-clip"
+    assert res.commands[0].payload["scale"] == 0.4
+
 def test_fallback_refuse_python(test_timeline):
     req = AIAssistantPromptRequest(prompt="write python code to sort a list", timelineState=test_timeline)
     res = run_fallback_director(req.prompt, req, "beginner", 50, "test-model")

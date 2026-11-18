@@ -68,15 +68,18 @@ GEMINI_TOOLS_SCHEMA = [
             },
             {
                 "name": "set_overlap",
-                "description": "Moves or layers a clip onto another track (e.g. overlay or PIP).",
+                "description": "Moves or layers a clip onto the Picture-in-Picture (PIP) or Overlay track ('overlay-clip'), or back to main video.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
-                        "clipId": {"type": "STRING", "description": "Clip ID to overlap"},
-                        "targetTrackId": {"type": "STRING", "description": "Track ID (e.g. overlay, video)"},
-                        "targetStartTime": {"type": "NUMBER", "description": "Start time on target track"}
+                        "clipId": {"type": "STRING", "description": "Clip ID to place into PIP/overlay (defaults to active or first clip)"},
+                        "targetTrackId": {"type": "STRING", "description": "Target track: 'overlay-clip' for PIP/Overlay, or 'video' for main track (default 'overlay-clip')"},
+                        "targetStartTime": {"type": "NUMBER", "description": "Start time on target track in seconds"},
+                        "scale": {"type": "NUMBER", "description": "PIP scale factor (default 0.4 for PIP window, 1.0 for full)"},
+                        "positionX": {"type": "NUMBER", "description": "Horizontal position offset in px (default 250 for top-right)"},
+                        "positionY": {"type": "NUMBER", "description": "Vertical position offset in px (default -150 for top-right)"}
                     },
-                    "required": ["clipId", "targetTrackId", "targetStartTime"]
+                    "required": []
                 }
             },
             {

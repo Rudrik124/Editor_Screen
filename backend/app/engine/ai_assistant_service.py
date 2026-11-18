@@ -67,7 +67,7 @@ FULL CAPABILITIES & AVAILABLE FEATURES (25 INTEGRATED TOOLS):
 3. MOTION, LAYERING & TRANSITIONS:
    - `add_transition`: Connects clips at cut points. Available: `cross_dissolve`, `slide_left`, `slide_right`, `zoom_in`, `zoom_out`, `push_up`, `fade_black`, `fade_white`, `dip_to_color`, `instant_cut`.
    - `remove_transition`: Clears transitions from a clip.
-   - `set_overlap`: Picture-in-Picture (PIP) and multi-track layering.
+   - `set_overlap`: Picture-in-Picture (PIP) and multi-track layering. Moves a clip to the dedicated Overlay track ('overlay-clip') or back to the main track ('video') with PIP transform scaling (e.g. scale=0.4, positionX=250, positionY=-150). Whenever the user asks for "PIP", "picture-in-picture", "overlay", or "add/move clip to overlay", ALWAYS call `set_overlap` with targetTrackId='overlay-clip'!
    - `set_clip_transform`: Controls position (X/Y), scale (1.0 = 100%), opacity (0.0 to 1.0), and rotation angle.
    - `add_keyframe`: Animates properties over time (opacity, scale, rotation, positionX, positionY, volume).
    - `remove_keyframe`: Deletes animation keyframes by ID.
@@ -91,6 +91,7 @@ TIMELINE STATE MANIFEST:
 - Canvas Aspect Ratio: {aspect_ratio}
 - Current Playhead Position: {current_time}s
 - Selected Clip ID: {selected_clip}
+- Available Timeline Tracks: Text (id: 'text'), Overlay/PIP (id: 'overlay-clip'), Video (id: 'video'), Audio Track (id: 'audio')
 - Active Clips on Timeline:
 {clips_formatted}
 
@@ -607,8 +608,11 @@ def process_ai_assistant_request(
         effects = [p for p in plan_steps if "effect" in p.lower()]
         audio = [p for p in plan_steps if "audio" in p.lower() or "mute" in p.lower() or "volume" in p.lower()]
         captions = [p for p in plan_steps if "transcribe" in p.lower() or "subtitle" in p.lower() or "caption" in p.lower()]
+        overlays = [p for p in plan_steps if "overlay" in p.lower() or "pip" in p.lower() or "picture-in-picture" in p.lower()]
 
         highlights = []
+        if overlays:
+            highlights.append("placed video in Picture-in-Picture (PIP) on the Overlay track")
         if audio:
             highlights.append("isolated and leveled the audio track")
         if captions:

@@ -77,6 +77,19 @@ async def download_rendered_video(job_id: str):
 async def websocket_render_progress(websocket: WebSocket, job_id: str):
     """Streams live real-time progress events (0-100%) to connected frontend clients."""
     await ws_manager.connect(job_id, websocket)
+    current_job = await ExportRepository.get_export(job_id)
+    if current_job:
+        try:
+            await websocket.send_json(ProgressMessage(
+                jobId=current_job.id,
+                status=current_job.status,
+                progress=current_job.progress,
+                currentFrame=current_job.currentFrame,
+                fps=current_job.fps,
+                error=current_job.error
+            ).model_dump())
+        except Exception:
+            pass
     try:
         # Keep connection open until client disconnects
         while True:

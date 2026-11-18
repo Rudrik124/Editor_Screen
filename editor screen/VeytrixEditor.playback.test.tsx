@@ -166,6 +166,6 @@ it("toggles playback after import and hands off export customization to the prev
     container.remove();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
-    localStorage.clear();
+    try { localStorage?.clear?.(); } catch {}
   }
 });

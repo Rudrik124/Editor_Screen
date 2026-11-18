@@ -546,6 +546,7 @@ class TimelineCompiler:
             ffmpeg_bin,
             "-y",
             "-nostdin",
+            "-loglevel", "warning",
             *input_args,
             "-filter_complex", filter_complex_str,
             *output_maps,
@@ -589,14 +590,30 @@ class TimelineCompiler:
         if storage_candidate.exists() and storage_candidate.is_file():
             return str(storage_candidate)
 
-        # 4. Check if remote HTTP/HTTPS URL
-        if clean_url.startswith("http://") or clean_url.startswith("https://"):
+        # 4. Check if remote HTTP/HTTPS URL (excluding blob: URLs)
+        if (clean_url.startswith("http://") or clean_url.startswith("https://")) and not clean_url.startswith("http://localhost:") and not clean_url.startswith("http://127.0.0.1:"):
             filename = Path(clean_url).name
             candidate = settings.UPLOAD_DIR / filename
             if candidate.exists():
                 return str(candidate)
             # Pass remote URL to FFmpeg
             return media_url
+
+        # 5. Fallback for browser blob: URLs or unresolved local frontend references:
+        # Check if any uploaded media file exists in settings.UPLOAD_DIR (e.g. latest uploaded video/audio)
+        if clean_url.startswith("blob:") or "blob:" in clean_url or clean_url.startswith("http://localhost:") or clean_url.startswith("http://127.0.0.1:"):
+            if settings.UPLOAD_DIR.is_dir():
+                valid_media_files = sorted(
+                    [
+                        f for f in settings.UPLOAD_DIR.glob("*.*")
+                        if f.suffix.lower() in [".mp4", ".mov", ".webm", ".mkv", ".mp3", ".wav", ".png", ".jpg", ".jpeg"]
+                        and not f.name.endswith("_watermark.png")
+                    ],
+                    key=lambda f: f.stat().st_mtime,
+                    reverse=True
+                )
+                if valid_media_files:
+                    return str(valid_media_files[0])
 
         raise FileNotFoundError(
             f"Media source '{media_url}' is not a readable local file or supported remote URL."

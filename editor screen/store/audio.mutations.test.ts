@@ -86,6 +86,40 @@ describe("audio state mutations", () => {
     expect(result?.newState.tracks?.[1]).toMatchObject({ clipIds: ["audio-1"] });
   });
 
+  it("extracts audio gracefully when newClipId is omitted (auto-generates unique ID)", () => {
+    const result = handleExtractAudio(baseState, {
+      id: "cmd-extract-no-id",
+      type: "EXTRACT_AUDIO",
+      payload: { clipId: "video-1" },
+      timestamp: Date.now(),
+    });
+
+    expect(result).not.toBeNull();
+    const newClipId = result?.newState.selectedClipId!;
+    expect(newClipId).toMatch(/^audio-video-1-/);
+    expect(result?.newState.clips?.[newClipId]).toBeDefined();
+    expect(result?.newState.clips?.[newClipId].type).toBe("audio");
+    expect(result?.newState.tracks?.[1].clipIds).toContain(newClipId);
+  });
+
+  it("extracts audio when clipId is omitted by resolving to the active or first video clip", () => {
+    const stateWithoutSelection: TimelineStateSlice = {
+      ...baseState,
+      selectedClipId: null,
+    };
+    const result = handleExtractAudio(stateWithoutSelection, {
+      id: "cmd-extract-implicit",
+      type: "EXTRACT_AUDIO",
+      payload: {},
+      timestamp: Date.now(),
+    });
+
+    expect(result).not.toBeNull();
+    const newClipId = result?.newState.selectedClipId!;
+    expect(result?.newState.clips?.[newClipId]).toBeDefined();
+    expect(result?.newState.clips?.["video-1"]?.muted).toBe(true);
+  });
+
   it("only increments the playback seek revision for intentional seeks", () => {
     const store = useEditorStore.getState();
     const initialRevision = store.seekRevision;

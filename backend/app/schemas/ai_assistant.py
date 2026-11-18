@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 # -------------------------------------------------------------
 
 class DuplicateClipArgs(BaseModel):
-    clipId: str = Field(..., description="ID of the clip to duplicate")
+    clipId: Optional[str] = Field(None, description="ID of the clip to duplicate (defaults to active or first clip)")
 
 class SplitClipArgs(BaseModel):
     clipId: str = Field(..., description="ID of the clip to split")
@@ -33,9 +33,12 @@ class RemoveTransitionArgs(BaseModel):
     clipId: str = Field(..., description="Clip ID to remove transition from")
 
 class SetOverlapArgs(BaseModel):
-    clipId: str = Field(..., description="Clip ID to move or layer")
-    targetTrackId: str = Field(..., description="Target track ID (e.g. overlay, video)")
-    targetStartTime: float = Field(..., ge=0.0, description="New start time in seconds")
+    clipId: Optional[str] = Field(None, description="Clip ID to move or layer in PIP/overlay (defaults to active or first clip)")
+    targetTrackId: Optional[str] = Field(default="overlay-clip", description="Target track ID: 'overlay-clip' for PIP/overlay, or 'video' for main track")
+    targetStartTime: Optional[float] = Field(None, ge=0.0, description="New start time on timeline in seconds")
+    scale: Optional[float] = Field(default=0.4, gt=0.0, le=10.0, description="PIP window scale (e.g. 0.4 for PIP, 1.0 for full)")
+    positionX: Optional[float] = Field(default=250.0, description="Horizontal position offset in px (e.g. 250 for right PIP)")
+    positionY: Optional[float] = Field(default=-150.0, description="Vertical position offset in px (e.g. -150 for top PIP)")
 
 class SetClipTransformArgs(BaseModel):
     clipId: str = Field(..., description="Clip ID to transform")
@@ -46,10 +49,10 @@ class SetClipTransformArgs(BaseModel):
     rotation: Optional[float] = Field(None, description="Rotation angle in degrees")
 
 class ReverseClipArgs(BaseModel):
-    clipId: str = Field(..., description="Clip ID to reverse playback")
+    clipId: Optional[str] = Field(None, description="Clip ID to reverse playback (defaults to active or first clip)")
 
 class ExtractAudioArgs(BaseModel):
-    clipId: str = Field(..., description="Clip ID to extract audio from into separate audio track")
+    clipId: Optional[str] = Field(None, description="Clip ID to extract audio from into separate audio track (defaults to active or first video clip)")
 
 class AddKeyframeArgs(BaseModel):
     clipId: str = Field(..., description="Target clip ID")

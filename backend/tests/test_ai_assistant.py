@@ -71,6 +71,67 @@ def test_build_system_instruction():
     assert "Intro" in prompt
     assert "c1" in prompt
 
+def test_extract_audio_validation_and_command():
+    timeline = {
+        "clips": {
+            "v1": {"id": "v1", "name": "Main Video", "type": "video", "start": 0.0, "duration": 15.0}
+        }
+    }
+    # Validate with explicit clipId
+    valid, err, val_args = validate_tool_call(
+        "extract_audio",
+        {"clipId": "v1"},
+        timeline
+    )
+    assert valid is True
+    assert val_args["clipId"] == "v1"
+
+    cmd = tool_call_to_editor_command("extract_audio", val_args)
+    assert cmd.type == "EXTRACT_AUDIO"
+    assert cmd.payload["clipId"] == "v1"
+    assert "newClipId" in cmd.payload
+    assert cmd.payload["newClipId"].startswith("audio-v1-")
+
+    # Validate with omitted clipId (auto-resolves to video clip)
+    valid_auto, err_auto, val_args_auto = validate_tool_call(
+        "extract_audio",
+        {},
+        timeline
+    )
+    assert valid_auto is True
+    assert val_args_auto["clipId"] == "v1"
+
+def test_set_overlap_pip_validation_and_command():
+    timeline = {
+        "clips": {
+            "v1": {"id": "v1", "name": "Main Video", "type": "video", "start": 0.0, "duration": 15.0}
+        }
+    }
+    # Validate with PIP alias
+    valid, err, val_args = validate_tool_call(
+        "set_overlap",
+        {"clipId": "v1", "targetTrackId": "pip"},
+        timeline
+    )
+    assert valid is True
+    assert val_args["targetTrackId"] == "overlay-clip"
+
+    cmd = tool_call_to_editor_command("set_overlap", val_args)
+    assert cmd.type == "SET_OVERLAP"
+    assert cmd.payload["clipId"] == "v1"
+    assert cmd.payload["trackId"] == "overlay-clip"
+    assert cmd.payload["scale"] == 0.4
+    assert cmd.payload["positionX"] == 250
+    assert cmd.payload["positionY"] == -150
+
+def test_duplicate_clip_command_payload():
+    cmd = tool_call_to_editor_command("duplicate_clip", {"clipId": "c1"})
+    assert cmd.type == "DUPLICATE_CLIP"
+    assert cmd.payload["clipId"] == "c1"
+    assert cmd.payload["originalClipId"] == "c1"
+    assert "newClipId" in cmd.payload
+    assert cmd.payload["newClipId"].startswith("clip-")
+
 def test_ai_assistant_timeout_handling(monkeypatch):
     from app.engine import ai_assistant_service
     from app.core.config import settings

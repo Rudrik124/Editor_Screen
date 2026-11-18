@@ -436,6 +436,40 @@ def run_fallback_director(
             model_used=model_name, userTier=detected_tier
         )
 
+    # 6b. Extract Audio
+    if any(k in p_lower for k in ["extract audio", "detach audio", "separate audio", "isolate audio", "extract the audio"]):
+        cid = clip_id or "clip-1"
+        args = {"clipId": cid}
+        tool_call = ToolCallRequestItem(name="extract_audio", args=args)
+        cmd = tool_call_to_editor_command("extract_audio", args)
+        desc = f"Detached audio from clip '{cid}' into dedicated audio track"
+        resp = format_tier_response(detected_tier, desc)
+        return AIAssistantResponse(
+            success=True, message=resp, responseText=resp, planSteps=[desc],
+            tool_calls=[tool_call], commands=[cmd], remaining_credits=remaining_credits,
+            model_used=model_name, userTier=detected_tier
+        )
+
+    # 6c. Picture-in-Picture (PIP) / Overlay
+    if any(k in p_lower for k in ["pip", "picture in picture", "picture-in-picture", "overlay", "layer video"]):
+        cid = clip_id or (state.selected_clip if hasattr(state, "selected_clip") else None) or "clip-1"
+        args = {
+            "clipId": cid,
+            "targetTrackId": "overlay-clip",
+            "scale": 0.4,
+            "positionX": 250,
+            "positionY": -150
+        }
+        tool_call = ToolCallRequestItem(name="set_overlap", args=args)
+        cmd = tool_call_to_editor_command("set_overlap", args)
+        desc = f"Moved clip '{cid}' to Overlay track in Picture-in-Picture (PIP) layout"
+        resp = format_tier_response(detected_tier, desc)
+        return AIAssistantResponse(
+            success=True, message=resp, responseText=resp, planSteps=[desc],
+            tool_calls=[tool_call], commands=[cmd], remaining_credits=remaining_credits,
+            model_used=model_name, userTier=detected_tier
+        )
+
     # 7. Reverse Clip
     if "reverse" in p_lower or "backwards" in p_lower:
         cid = clip_id or "clip-1"

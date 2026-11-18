@@ -39,23 +39,44 @@ def validate_tool_call(
 
     # Existence and boundary checks for clip-based operations
     clip_id = validated_dict.get("clipId")
-    if clip_id and tool_name not in ["add_clip", "undo_redo", "set_cover", "set_ratio", "mute_track"]:
+    if tool_name not in ["add_clip", "undo_redo", "set_cover", "set_ratio", "mute_track"]:
+        if not clip_id:
+            # If no clip specified, default to selected clip or first video clip
+            selected_id = timeline_state.get("selectedClipId") or timeline_state.get("selected_clip")
+            if selected_id and selected_id in clips_map:
+                clip_id = selected_id
+            elif clips_map:
+                video_cids = [cid for cid, c in clips_map.items() if isinstance(c, dict) and c.get("type") == "video"]
+                clip_id = video_cids[0] if video_cids else next(iter(clips_map.keys()))
+            if clip_id:
+                validated_dict["clipId"] = clip_id
+
         # If user refers to 'first clip' or 'clip-1', resolve gracefully if exact clip not found
-        if clip_id not in clips_map:
+        if clip_id and clip_id not in clips_map:
             # Try fuzzy match or fallback to first available clip
             if clips_map:
-                resolved_id = next(iter(clips_map.keys()))
+                video_cids = [cid for cid, c in clips_map.items() if isinstance(c, dict) and c.get("type") == "video"]
+                resolved_id = video_cids[0] if video_cids else next(iter(clips_map.keys()))
                 validated_dict["clipId"] = resolved_id
                 clip_id = resolved_id
             else:
                 return False, f"Clip '{clip_id}' does not exist on timeline.", None
+
+        if not clip_id or clip_id not in clips_map:
+            return False, f"No valid clip found for operation '{tool_name}'.", None
 
         target_clip = clips_map[clip_id]
         clip_duration = float(target_clip.get("duration", 0.0))
         clip_start = float(target_clip.get("start", 0.0))
 
         # Boundary checks
-        if tool_name == "split_clip":
+        if tool_name == "set_overlap":
+            raw_tgt = str(validated_dict.get("targetTrackId") or validated_dict.get("trackId") or "overlay-clip").lower()
+            norm_track = "overlay-clip" if raw_tgt in ("overlay", "pip", "overlay-clip", "overlay_track", "") else raw_tgt
+            validated_dict["targetTrackId"] = norm_track
+            validated_dict["trackId"] = norm_track
+
+        elif tool_name == "split_clip":
             split_time = validated_dict.get("splitTime", 0.0)
             if split_time <= clip_start or split_time >= (clip_start + clip_duration):
                 return False, f"Cannot split clip: requested cut time ({split_time:.2f}s) is outside clip bounds ({clip_start:.2f}s to {clip_start + clip_duration:.2f}s).", None
@@ -121,7 +142,11 @@ def tool_call_to_editor_command(
 
     # Map tool_name to CommandType
     type_mapping = {
-        "duplicate_clip": ("DUPLICATE_CLIP", lambda a: {"clipId": a["clipId"]}),
+        "duplicate_clip": ("DUPLICATE_CLIP", lambda a: {
+            "originalClipId": a.get("clipId") or a.get("originalClipId"),
+            "clipId": a.get("clipId") or a.get("originalClipId"),
+            "newClipId": a.get("newClipId") or f"clip-{uuid.uuid4().hex[:8]}"
+        }),
         "split_clip": ("SPLIT_CLIP", lambda a: {
             "clipId": a["clipId"],
             "splitTime": a["splitTime"],
@@ -147,15 +172,23 @@ def tool_call_to_editor_command(
         "remove_transition": ("REMOVE_TRANSITION", lambda a: {"clipId": a["clipId"]}),
         "set_overlap": ("SET_OVERLAP", lambda a: {
             "clipId": a["clipId"],
-            "targetTrackId": a["targetTrackId"],
-            "targetStartTime": a["targetStartTime"]
+            "trackId": "overlay-clip" if str(a.get("targetTrackId") or a.get("trackId") or "overlay-clip").lower() in ("overlay", "pip", "overlay-clip", "overlay_track", "") else str(a.get("trackId") or a.get("targetTrackId")),
+            "targetTrackId": "overlay-clip" if str(a.get("targetTrackId") or a.get("trackId") or "overlay-clip").lower() in ("overlay", "pip", "overlay-clip", "overlay_track", "") else str(a.get("targetTrackId") or a.get("trackId")),
+            "targetStartTime": a.get("targetStartTime"),
+            "scale": a.get("scale") if a.get("scale") is not None else 0.4,
+            "positionX": a.get("positionX") if a.get("positionX") is not None else 250,
+            "positionY": a.get("positionY") if a.get("positionY") is not None else -150
         }),
         "set_clip_transform": ("SET_CLIP_TRANSFORM", lambda a: {
             "clipId": a["clipId"],
             **{k: v for k, v in a.items() if k != "clipId" and v is not None}
         }),
         "reverse_clip": ("REVERSE_CLIP", lambda a: {"clipId": a["clipId"]}),
-        "extract_audio": ("EXTRACT_AUDIO", lambda a: {"clipId": a["clipId"]}),
+        "extract_audio": ("EXTRACT_AUDIO", lambda a: {
+            "clipId": a["clipId"],
+            "sourceClipId": a["clipId"],
+            "newClipId": a.get("newClipId") or f"audio-{a['clipId']}-{uuid.uuid4().hex[:8]}"
+        }),
         "add_keyframe": ("ADD_KEYFRAME", lambda a: {
             "clipId": a["clipId"],
             "keyframe": {

@@ -76,38 +76,72 @@ export function handleSetOverlap(
   state: TimelineStateSlice,
   command: EditorCommand
 ): { newState: Partial<TimelineStateSlice>; inverse?: EditorCommand } | null {
-  const { clipId, trackId, scale = 0.5, positionX = 0, positionY = 0 } = command.payload as {
-    clipId: string;
-    trackId: string;
+  const payload = (command.payload || {}) as {
+    clipId?: string;
+    trackId?: string;
+    targetTrackId?: string;
+    targetStartTime?: number;
     scale?: number;
     positionX?: number;
     positionY?: number;
   };
 
+  const clipId = payload.clipId || state.selectedClipId || Object.keys(state.clips)[0];
+  if (!clipId) return null;
+
   const clip = state.clips[clipId];
   if (!clip || clip.locked) return null;
 
-  const sourceTrack = state.tracks.find(t => t.id === clip.trackId);
-  const destination = state.tracks.find(t => t.id === trackId);
+  const rawTargetTrackId = payload.trackId || payload.targetTrackId || "overlay-clip";
+  let destination = state.tracks.find((t) => t.id === rawTargetTrackId);
+  if (!destination) {
+    const rawLower = rawTargetTrackId.toLowerCase();
+    if (rawLower === "overlay" || rawLower === "pip" || rawLower.includes("overlay")) {
+      destination = state.tracks.find((t) => t.id === "overlay-clip" || t.id.includes("overlay"));
+    } else if (rawLower === "video" || rawLower === "main") {
+      destination = state.tracks.find((t) => t.id === "video");
+    }
+  }
+
+  const sourceTrack = state.tracks.find((t) => t.id === clip.trackId);
   if (!sourceTrack || sourceTrack.locked || !destination || destination.locked) return null;
+
+  const isOverlayDest = destination.id === "overlay-clip" || destination.id.includes("overlay");
+  const scale = payload.scale !== undefined && Number.isFinite(payload.scale)
+    ? payload.scale
+    : (isOverlayDest ? 0.4 : 1.0);
+  const positionX = payload.positionX !== undefined && Number.isFinite(payload.positionX)
+    ? payload.positionX
+    : (isOverlayDest ? 250 : 0);
+  const positionY = payload.positionY !== undefined && Number.isFinite(payload.positionY)
+    ? payload.positionY
+    : (isOverlayDest ? -150 : 0);
+
   if (![scale, positionX, positionY].every(Number.isFinite) || scale <= 0) return null;
-  if (trackId === "video" && destination.clipIds.some(id => {
+
+  const targetStart = payload.targetStartTime !== undefined && Number.isFinite(payload.targetStartTime)
+    ? Math.max(0, payload.targetStartTime)
+    : clip.start;
+
+  if (destination.id === "video" && destination.clipIds.some(id => {
     const other = state.clips[id];
-    return id !== clipId && other && other.start < clip.start + clip.duration && clip.start < other.start + other.duration;
+    return id !== clipId && other && other.start < targetStart + clip.duration && targetStart < other.start + other.duration;
   })) return null;
 
   const prevTrackId = clip.trackId;
+  const prevStart = clip.start;
   const prevScale = clip.scale ?? 1.0;
   const prevX = clip.positionX ?? 0;
   const prevY = clip.positionY ?? 0;
+  const destTrackId = destination.id;
 
   // Move clip from old track to target track in tracks array
   const updatedTracks = state.tracks.map((t) => {
-    if (prevTrackId === trackId) return t;
+    if (prevTrackId === destTrackId) return t;
     if (t.id === prevTrackId) {
       return { ...t, clipIds: t.clipIds.filter((id) => id !== clipId) };
     }
-    if (t.id === trackId && !t.clipIds.includes(clipId)) {
+    if (t.id === destTrackId && !t.clipIds.includes(clipId)) {
       return { ...t, clipIds: [...t.clipIds, clipId] };
     }
     return t;
@@ -115,7 +149,8 @@ export function handleSetOverlap(
 
   const updatedClip: ClipModel = {
     ...clip,
-    trackId,
+    trackId: destTrackId,
+    start: targetStart,
     scale,
     positionX,
     positionY,
@@ -127,6 +162,7 @@ export function handleSetOverlap(
     payload: {
       clipId,
       trackId: prevTrackId,
+      targetStartTime: prevStart,
       scale: prevScale,
       positionX: prevX,
       positionY: prevY,
@@ -138,6 +174,7 @@ export function handleSetOverlap(
     newState: {
       tracks: updatedTracks,
       clips: { ...state.clips, [clipId]: updatedClip },
+      selectedClipId: clipId,
     },
     inverse,
   };

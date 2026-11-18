@@ -13,7 +13,7 @@ beforeEach(() => {
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
-afterEach(() => { act(() => root.unmount()); container.remove(); vi.unstubAllGlobals(); localStorage.clear(); });
+afterEach(() => { act(() => root.unmount()); container.remove(); vi.unstubAllGlobals(); try { localStorage?.clear?.(); } catch {} });
 
 it("drags text with one commit, preserves grab offset, and supports keyboard movement", () => {
   const update = vi.fn();

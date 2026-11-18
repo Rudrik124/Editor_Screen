@@ -12,11 +12,17 @@ export function handleSplitClip(
   state: TimelineStateSlice,
   command: EditorCommand
 ): { newState: Partial<TimelineStateSlice>; inverse?: EditorCommand } | null {
-  const { clipId, splitTime, newClipId } = command.payload as {
-    clipId: string;
+  const payload = (command.payload || {}) as {
+    clipId?: string;
     splitTime: number;
-    newClipId: string;
+    newClipId?: string;
   };
+  let clipId = payload.clipId || state.selectedClipId;
+  if (!clipId || !state.clips[clipId]) {
+    const firstClip = Object.values(state.clips)[0];
+    if (firstClip) clipId = firstClip.id;
+  }
+  if (!clipId) return null;
   const clip = state.clips[clipId];
   if (!clip) return null;
   if (clip.locked) {
@@ -29,10 +35,16 @@ export function handleSplitClip(
     return null;
   }
 
+  const splitTime = payload.splitTime;
   if (splitTime <= clip.start || splitTime >= clip.start + clip.duration) {
     console.warn("Operation rejected: split point out of clip bounds.");
     return null;
   }
+
+  const newClipId =
+    payload.newClipId ||
+    `clip-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  if (state.clips[newClipId]) return null;
 
   const leftDuration = splitTime - clip.start;
   const rightDuration = clip.duration - leftDuration;
@@ -173,17 +185,31 @@ export function handleDuplicateClip(
   state: TimelineStateSlice,
   command: EditorCommand
 ): { newState: Partial<TimelineStateSlice>; inverse?: EditorCommand } | null {
-  const { originalClipId, newClipId } = command.payload as {
-    originalClipId: string;
-    newClipId: string;
+  const payload = (command.payload || {}) as {
+    originalClipId?: string;
+    clipId?: string;
+    newClipId?: string;
   };
-  const original = state.clips[originalClipId];
+
+  let targetId = payload.originalClipId || payload.clipId || state.selectedClipId;
+  if (!targetId || !state.clips[targetId]) {
+    const firstClip = Object.values(state.clips)[0];
+    if (firstClip) targetId = firstClip.id;
+  }
+  if (!targetId) return null;
+
+  const original = state.clips[targetId];
   if (!original) return null;
   const track = state.tracks.find((t) => t.id === original.trackId);
   if (!track || track.locked) {
     console.warn("Operation rejected: track is locked.");
     return null;
   }
+
+  const newClipId =
+    payload.newClipId ||
+    `clip-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  if (state.clips[newClipId]) return null;
 
   const duplicateClip: ClipModel = {
     ...original,
@@ -193,7 +219,7 @@ export function handleDuplicateClip(
     locked: false,
   };
 
-  const clipIndex = track.clipIds.indexOf(originalClipId);
+  const clipIndex = track.clipIds.indexOf(targetId);
   const newClipIds = [...track.clipIds];
   newClipIds.splice(clipIndex + 1, 0, newClipId);
 
@@ -302,7 +328,20 @@ export function handleAddClip(
     trackId: string;
     index?: number;
   };
-  const track = state.tracks.find((t) => t.id === trackId);
+
+  let resolvedTrackId = trackId;
+  let track = state.tracks.find((t) => t.id === resolvedTrackId);
+  if (!track) {
+    const rawLower = (trackId || "").toLowerCase();
+    if (rawLower === "overlay" || rawLower === "pip" || rawLower.includes("overlay")) {
+      track = state.tracks.find((t) => t.id === "overlay-clip" || t.id.includes("overlay"));
+      if (track) resolvedTrackId = track.id;
+    } else if (rawLower === "video" || rawLower === "main") {
+      track = state.tracks.find((t) => t.id === "video");
+      if (track) resolvedTrackId = track.id;
+    }
+  }
+
   if (!track || track.locked) {
     console.warn("Operation rejected: track is locked.");
     return null;
@@ -316,7 +355,7 @@ export function handleAddClip(
   }
 
   const updatedTracks = state.tracks.map((t) =>
-    t.id === trackId ? { ...t, clipIds: newClipIds } : t
+    t.id === resolvedTrackId ? { ...t, clipIds: newClipIds } : t
   );
 
   const inverse: EditorCommand = {
@@ -324,7 +363,7 @@ export function handleAddClip(
     type: "DELETE_CLIP",
     payload: {
       clipId: clip.id,
-      trackId,
+      trackId: resolvedTrackId,
     },
     timestamp: Date.now(),
   };

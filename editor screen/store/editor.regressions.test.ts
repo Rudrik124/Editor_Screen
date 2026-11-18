@@ -23,6 +23,16 @@ describe("editor regression commands", () => {
     useEditorStore.getState().undo();
     expect(useEditorStore.getState().clips.v).toMatchObject(clip);
   });
+  it("supports targetTrackId alias 'overlay' and 'pip' with auto-applied defaults", () => {
+    expect(dispatch("SET_OVERLAP", { clipId: "v", targetTrackId: "pip" })).toBe(true);
+    expect(useEditorStore.getState().clips.v).toMatchObject({
+      trackId: "overlay-clip",
+      scale: 0.4,
+      positionX: 250,
+      positionY: -150
+    });
+    expect(useEditorStore.getState().tracks.find(t => t.id === "overlay-clip")?.clipIds).toContain("v");
+  });
   it("rejects missing/locked destinations and overlapping video without changing state", () => {
     expect(dispatch("SET_OVERLAP", { clipId: "v", trackId: "missing" })).toBe(false);
     dispatch("SET_OVERLAP", { clipId: "v", trackId: "overlay-clip" });

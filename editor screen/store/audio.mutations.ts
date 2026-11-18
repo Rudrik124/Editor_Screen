@@ -109,12 +109,32 @@ export function handleExtractAudio(
   state: TimelineStateSlice,
   command: EditorCommand
 ): { newState: Partial<TimelineStateSlice>; inverse?: EditorCommand } | null {
-  const { clipId, newClipId } = command.payload as { clipId: string; newClipId: string };
-  const sourceClip = state.clips[clipId];
+  const payload = (command.payload || {}) as {
+    clipId?: string;
+    sourceClipId?: string;
+    newClipId?: string;
+  };
+
+  // Gracefully resolve target video clip if omitted or invalid
+  let targetClipId = payload.clipId || payload.sourceClipId || state.selectedClipId;
+  if (!targetClipId || !state.clips[targetClipId] || state.clips[targetClipId].type !== "video") {
+    const firstVideo = Object.values(state.clips).find((c) => c.type === "video");
+    if (firstVideo) {
+      targetClipId = firstVideo.id;
+    }
+  }
+
+  if (!targetClipId) return null;
+  const sourceClip = state.clips[targetClipId];
   const audioTrack = getAudioTrack(state);
 
-  if (!sourceClip || sourceClip.type !== "video" || sourceClip.locked || !newClipId) return null;
-  if (!audioTrack || audioTrack.locked || state.clips[newClipId]) return null;
+  if (!sourceClip || sourceClip.type !== "video" || sourceClip.locked) return null;
+  if (!audioTrack || audioTrack.locked) return null;
+
+  const newClipId =
+    payload.newClipId ||
+    `audio-${targetClipId}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  if (state.clips[newClipId]) return null;
 
   const extractedClip: AudioClip = {
     ...sourceClip,
@@ -143,7 +163,7 @@ export function handleExtractAudio(
     newState: {
       clips: {
         ...state.clips,
-        [clipId]: { ...sourceClip, muted: true },
+        [targetClipId]: { ...sourceClip, muted: true },
         [newClipId]: extractedClip,
       },
       tracks: updatedTracks,
@@ -153,7 +173,7 @@ export function handleExtractAudio(
       id: commandId("inv-extract-audio", command),
       type: "RESTORE_EXTRACT_AUDIO",
       payload: {
-        sourceClipId: clipId,
+        sourceClipId: targetClipId,
         audioClip: extractedClip,
         audioTrackId: audioTrack.id,
         insertIndex,
@@ -172,13 +192,12 @@ export function handleRestoreExtractAudio(
     sourceClipId,
     audioClip,
     audioTrackId,
-    insertIndex,
     sourceMuted,
   } = command.payload as {
     sourceClipId: string;
     audioClip: ClipModel;
     audioTrackId: string;
-    insertIndex: number;
+    insertIndex?: number;
     sourceMuted: boolean;
   };
   const sourceClip = state.clips[sourceClipId];
@@ -186,8 +205,6 @@ export function handleRestoreExtractAudio(
   if (!sourceClip || !audioTrack || !state.clips[audioClip.id]) return null;
 
   const clipIds = audioTrack.clipIds.filter((id) => id !== audioClip.id);
-  const safeIndex = Math.max(0, Math.min(insertIndex, clipIds.length));
-  clipIds.splice(safeIndex, 0, audioClip.id);
   const restoredClips = { ...state.clips };
   delete restoredClips[audioClip.id];
   restoredClips[sourceClipId] = { ...sourceClip, muted: sourceMuted };
@@ -199,6 +216,15 @@ export function handleRestoreExtractAudio(
         track.id === audioTrackId ? { ...track, clipIds } : track
       ),
       selectedClipId: sourceClipId,
+    },
+    inverse: {
+      id: commandId("redo-extract-audio", command),
+      type: "EXTRACT_AUDIO",
+      payload: {
+        clipId: sourceClipId,
+        newClipId: audioClip.id,
+      },
+      timestamp: Date.now(),
     },
   };
 }
