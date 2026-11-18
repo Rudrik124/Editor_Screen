@@ -1,9 +1,35 @@
-import { ClipModel, TrackModel } from "../types/editor.types";
+import { createClient } from "@supabase/supabase-js";
+import { ClipModel, TrackModel, WatermarkSettings } from "../types/editor.types";
 import { getAudioPlaybackRate } from "../utils/audioTimeline";
 
 const RAW_API_URL = (import.meta.env.VITE_API_URL as string | undefined) || "http://localhost:8000";
 export const API_BASE = `${RAW_API_URL.replace(/\/+$/, "")}/api/v1`;
 const WS_BASE = `${RAW_API_URL.replace(/\/+$/, "").replace(/^http/, "ws")}/api/v1`;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseAuth = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
+
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  if (!supabaseAuth) return {};
+  const { data, error } = await supabaseAuth.auth.getSession();
+  if (error) throw error;
+  return data.session ? { Authorization: `Bearer ${data.session.access_token}` } : {};
+}
+
+export async function getRenderCapabilities(): Promise<{ canCustomizeWatermark: boolean }> {
+  const response = await fetch(`${API_BASE}/render/capabilities`, {
+    headers: await getAuthHeaders(),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(await getApiErrorMessage(response, "Watermark permissions could not be loaded"));
+  }
+  return response.json();
+}
+
+export function resolveAssetPreviewUrl(mediaUrl: string): string {
+  return new URL(mediaUrl, new URL(RAW_API_URL, window.location.href)).href;
+}
 
 export interface UploadedAssetResponse {
   assetId: string;
@@ -29,11 +55,31 @@ export async function uploadAsset(file: File): Promise<UploadedAssetResponse> {
   return response.json();
 }
 
+export interface UploadedWatermarkResponse {
+  assetId: string;
+  previewUrl: string;
+  width: number;
+  height: number;
+}
+
+export async function uploadWatermarkAsset(file: File): Promise<UploadedWatermarkResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch(`${API_BASE}/assets/watermarks`, {
+    method: "POST", headers: await getAuthHeaders(), body: formData,
+  });
+  if (!response.ok) {
+    throw new Error(await getApiErrorMessage(response, "Watermark upload failed"));
+  }
+  return response.json();
+}
+
 export interface ExportSettings {
   quality: "draft" | "standard" | "high";
   resolution: { width: number; height: number };
   fps: number;
   coverUrl?: string | null;
+  watermark?: WatermarkSettings;
 }
 
 export interface RenderJobResponse {
@@ -212,10 +258,20 @@ export async function submitTimelineRender(
     coverUrl: settings.coverUrl || undefined,
   };
 
+  const watermark = settings.watermark;
+  const watermarkPayload = watermark && {
+    enabled: watermark.enabled,
+    source: watermark.source,
+    assetId: watermark.source === "custom" ? watermark.assetId : undefined,
+    x: watermark.x,
+    y: watermark.y,
+    width: watermark.width,
+    opacity: watermark.opacity,
+  };
   const response = await fetch(`${API_BASE}/render`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    headers: { ...await getAuthHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ ...payload, watermark: watermarkPayload }),
   });
 
   if (!response.ok) {

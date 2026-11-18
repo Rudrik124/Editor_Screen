@@ -47,3 +47,24 @@ it("restores persisted text styling and placement after remount", () => {
   act(() => root.render(<Project />));
   expect(useEditorStore.getState().clips.t.text_data).toMatchObject({ text: "Hello", x: 80, y: 20, preset: "neon" });
 });
+
+it("restores a disabled custom watermark with its settings after remount", () => {
+  function Project() { return <span>{useLocalProject()}</span>; }
+  const watermark = {
+    enabled: false,
+    source: "custom",
+    assetId: "custom-mark",
+    previewUrl: "/uploads/custom-mark.png",
+    x: 0.25,
+    y: 0.4,
+    width: 0.2,
+    opacity: 0.5,
+  } as const;
+  act(() => root.render(<Project />));
+  act(() => useEditorStore.getState().setWatermark(watermark));
+  act(() => root.unmount());
+  useEditorStore.setState({ watermark: { ...watermark, enabled: true } });
+  root = createRoot(container);
+  act(() => root.render(<Project />));
+  expect(useEditorStore.getState().watermark).toEqual(watermark);
+});

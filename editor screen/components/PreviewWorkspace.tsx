@@ -1,5 +1,6 @@
 import { reverseKey, useReversePreviews } from "../services/reversePreview";
 import { TextOverlay } from "./TextOverlay";
+import { WatermarkOverlay } from "./WatermarkOverlay";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   SkipBack,
@@ -33,6 +34,11 @@ interface PreviewWorkspaceProps {
   textElements: TextElement[];
   onUpdateText: (id: string, changes: Partial<TextElement>) => void;
   onCurrentTimeChange: (time: number) => void;
+  watermarkSelected: boolean;
+  watermarkLocked: boolean;
+  pendingWatermarkUrl: string | null;
+  onSelectWatermark: () => void;
+  onDeselectWatermark: () => void;
 }
 
 const hiddenVideoStyle: React.CSSProperties = {
@@ -62,8 +68,14 @@ export function PreviewWorkspace({
   onPlaybackControllerReady,
   textElements,
   onUpdateText,
+  watermarkSelected,
+  watermarkLocked,
+  pendingWatermarkUrl,
+  onSelectWatermark,
+  onDeselectWatermark,
 }: PreviewWorkspaceProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const previewFrameRef = useRef<HTMLDivElement | null>(null);
   const videoPrimaryRef = useRef<HTMLVideoElement>(null);
   const videoSecondaryRef = useRef<HTMLVideoElement>(null);
   const videoOverlayRef = useRef<HTMLVideoElement>(null);
@@ -458,11 +470,13 @@ function resolveClipLayerTransform(clip: ClipModel, localTime: number): LayerTra
   }, [isPlaying, onPlaybackControllerReady, togglePlayback]);
 
   const cssRatio = RatioProcessor.getCssRatio(aspectRatio);
+  const frameDimensions = RatioProcessor.getDimensions(aspectRatio);
+  const frameAspectRatio = frameDimensions.width / frameDimensions.height;
   const hasActiveMedia = Boolean(activeVideoClip || activeOverlayClip || media?.url || storeDuration > 0);
 
   return (
     <section className="preview-workspace">
-      <div className="preview-canvas">
+      <div className="preview-canvas" ref={previewFrameRef}>
         {reversePending && <div role="status" className="audio-playback-error">
           {reverseRequired.map(clip => {
             const preview = reversePreviews[reverseKey(clip)];
@@ -479,6 +493,7 @@ function resolveClipLayerTransform(clip: ClipModel, localTime: number): LayerTra
           <div
             className="preview-art"
             style={{
+              "--preview-frame-ratio": frameAspectRatio,
               position: "relative",
               display: "flex",
               alignItems: "center",
@@ -491,7 +506,7 @@ function resolveClipLayerTransform(clip: ClipModel, localTime: number): LayerTra
               borderRadius: "4px",
               boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
               transition: "aspect-ratio 0.25s ease",
-            }}
+            } as React.CSSProperties}
           >
             {/* Hidden media elements feeding WebGL textures */}
             <video
@@ -561,6 +576,7 @@ function resolveClipLayerTransform(clip: ClipModel, localTime: number): LayerTra
               width={1280}
               height={720}
               style={{ width: "100%", height: "100%", objectFit: "contain" }}
+              onPointerDown={onDeselectWatermark}
             />
 
             {/* Text overlays */}
@@ -572,6 +588,13 @@ function resolveClipLayerTransform(clip: ClipModel, localTime: number): LayerTra
                   locked={Boolean(storeClips[e.id]?.locked || storeTracks.find(t => t.id === storeClips[e.id]?.trackId)?.locked)}
                   onSelect={id => useEditorStore.getState().selectClip(id)} onUpdate={onUpdateText} />
               ))}
+            <WatermarkOverlay
+              selected={watermarkSelected}
+              locked={watermarkLocked}
+              pendingUrl={pendingWatermarkUrl}
+              onSelect={onSelectWatermark}
+              frameAspectRatio={frameAspectRatio}
+            />
           </div>
         ) : (
           <div className="preview-empty">
@@ -656,7 +679,7 @@ function resolveClipLayerTransform(clip: ClipModel, localTime: number): LayerTra
               if (document.fullscreenElement) {
                 document.exitFullscreen().catch(() => {});
               } else {
-                canvasRef.current?.requestFullscreen?.().catch(() => {});
+                previewFrameRef.current?.requestFullscreen?.().catch(() => {});
               }
             }}
             aria-label="Fullscreen"

@@ -3,7 +3,8 @@ import "./styles/tokens.css";
 import "./styles/layout.css";
 import "./styles/timeline.css";
 import "./styles/editor-layout-fixes.css";
-import { useEffect, useRef, useState } from "react";
+import "./styles/watermark.css";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { EditorHeader } from "./components/EditorHeader";
 import { MediaLibrary } from "./components/MediaLibrary";
 import { PreviewWorkspace } from "./components/PreviewWorkspace";
@@ -16,12 +17,13 @@ import { VideoAsset, AudioAsset, ClipModel } from "./types/editor.types";
 import { useTextElements } from "./left-side toolbar/functionality/text/functionality/useTextElements";
 import { useEditorStore } from "./store/editor.store";
 import { useEditorKeyboardShortcuts } from "./hooks/useEditorKeyboardShortcuts";
-import { uploadAsset } from "./services/backendApi";
+import { getRenderCapabilities, uploadAsset, uploadWatermarkAsset } from "./services/backendApi";
 import { isImageMedia } from "./components/utils/previewResolver";
 import { createAudioAsset } from "./left-side toolbar/functionality/Audio/functionality/createAudioAsset";
 import { DEFAULT_SAMPLE_MEDIA } from "./data/sampleMedia";
 import { AIAssistantPanel } from "./plugins/ai-assistant";
 import { UpgradePlanModal } from "./components/UpgradePlanModal";
+import { WatermarkControls } from "./components/WatermarkControls";
 
 export function VeytrixEditor() {
   const saveStatus = useLocalProject();
@@ -35,6 +37,14 @@ export function VeytrixEditor() {
   const [audioAssets, setAudioAssets] = useState<AudioAsset[]>([]);
   const [addedVideoIds, setAddedVideoIds] = useState<string[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [watermarkSelected, setWatermarkSelected] = useState(false);
+  const [watermarkUploadError, setWatermarkUploadError] = useState<string | null>(null);
+  const [watermarkUploading, setWatermarkUploading] = useState(false);
+  const [pendingWatermarkUrl, setPendingWatermarkUrl] = useState<string | null>(null);
+  const watermarkUploadPending = useRef(false);
+  const [canCustomizeWatermark, setCanCustomizeWatermark] = useState<boolean | null>(null);
+  const [watermarkPermissionsError, setWatermarkPermissionsError] = useState<string | null>(null);
+  const permissionRequest = useRef(0);
   const text = useTextElements();
   const [playbackController, setPlaybackController] = useState<{
     isPlaying: boolean;
@@ -47,9 +57,72 @@ export function VeytrixEditor() {
   const mediaRef = useRef<typeof media>(null);
 
   const selectedClipId = useEditorStore((state) => state.selectedClipId);
+  const watermarkEnabled = useEditorStore((state) => state.watermark.enabled);
   const clips = useEditorStore((state) => state.clips);
   const setCurrentStoreTime = useEditorStore((state) => state.setCurrentTime);
   const dispatch = useEditorStore((state) => state.dispatch);
+
+  const refreshWatermarkPermissions = useCallback(async () => {
+    const request = ++permissionRequest.current;
+    setWatermarkPermissionsError(null);
+    try {
+      const capabilities = await getRenderCapabilities();
+      if (request === permissionRequest.current) setCanCustomizeWatermark(capabilities.canCustomizeWatermark);
+    } catch (error) {
+      if (request !== permissionRequest.current) return;
+      setCanCustomizeWatermark(null);
+      setWatermarkPermissionsError(error instanceof Error ? error.message : "Watermark permissions unavailable.");
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshWatermarkPermissions();
+    return () => { permissionRequest.current++; };
+  }, [refreshWatermarkPermissions]);
+
+  useEffect(() => {
+    if (selectedClipId || !watermarkEnabled) setWatermarkSelected(false);
+  }, [selectedClipId, watermarkEnabled]);
+
+  useEffect(() => {
+    if (pendingWatermarkUrl) return () => URL.revokeObjectURL(pendingWatermarkUrl);
+  }, [pendingWatermarkUrl]);
+
+  const selectWatermark = () => {
+    if (!canCustomizeWatermark) return;
+    const state = useEditorStore.getState();
+    if (!state.watermark.enabled) state.setWatermark({ ...state.watermark, enabled: true });
+    if (state.selectedClipId) state.selectClip(null);
+    setWatermarkSelected(true);
+  };
+
+  const uploadWatermark = async (file: File) => {
+    if (!canCustomizeWatermark || watermarkUploadPending.current) return;
+    setWatermarkUploadError(null);
+    if (!/\.png$/i.test(file.name) || (file.type && file.type !== "image/png")) {
+      setWatermarkUploadError("Choose a PNG image.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setWatermarkUploadError("Choose a PNG smaller than 5 MB.");
+      return;
+    }
+    watermarkUploadPending.current = true;
+    setWatermarkUploading(true);
+    try {
+      setPendingWatermarkUrl(URL.createObjectURL(file));
+      const { assetId, previewUrl } = await uploadWatermarkAsset(file);
+      if (!assetId || !previewUrl) throw new Error("The upload did not return a logo.");
+      const state = useEditorStore.getState();
+      state.setWatermark({ ...state.watermark, source: "custom", assetId, previewUrl });
+    } catch (error) {
+      setWatermarkUploadError(error instanceof Error ? error.message : "Logo upload failed.");
+    } finally {
+      watermarkUploadPending.current = false;
+      setPendingWatermarkUrl(null);
+      setWatermarkUploading(false);
+    }
+  };
 
   useEffect(() => {
     videoAssetsRef.current = videoAssets;
@@ -371,9 +444,24 @@ export function VeytrixEditor() {
     }
   };
 
+  const watermarkControls = (
+    <WatermarkControls
+      uploading={watermarkUploading}
+      error={watermarkUploadError}
+      onUpload={uploadWatermark}
+    />
+  );
+
   return (
     <main className="veytrix-editor">
-      <EditorHeader saveStatus={saveStatus} />
+      <EditorHeader
+        saveStatus={saveStatus}
+        onCustomizeWatermark={selectWatermark}
+        watermarkUploading={watermarkUploading}
+        canCustomizeWatermark={canCustomizeWatermark}
+        watermarkPermissionsError={watermarkPermissionsError}
+        onRefreshWatermarkPermissions={refreshWatermarkPermissions}
+      />
       <div className="editor-body">
         <div className="upper-workspace">
           <MediaLibrary
@@ -391,6 +479,11 @@ export function VeytrixEditor() {
             onUpdateText={text.update}
             onCurrentTimeChange={(t) => setCurrentStoreTime(t)}
             onPlaybackControllerReady={setPlaybackController}
+            watermarkSelected={watermarkSelected}
+            watermarkLocked={canCustomizeWatermark !== true}
+            pendingWatermarkUrl={pendingWatermarkUrl}
+            onSelectWatermark={selectWatermark}
+            onDeselectWatermark={() => setWatermarkSelected(false)}
           />
           <RightInspector
             selectedText={text.elements.find(
@@ -398,6 +491,7 @@ export function VeytrixEditor() {
             )}
             onUpdateText={text.update}
             onDeleteText={text.remove}
+            watermarkControls={canCustomizeWatermark && watermarkSelected ? watermarkControls : undefined}
           />
         </div>
         <div className="timeline-lower">
@@ -430,6 +524,8 @@ export function VeytrixEditor() {
         onAddText={text.add}
         videoAssets={videoAssets}
         onAddVideo={addVideoToTimeline}
+        onSelectWatermark={selectWatermark}
+        watermarkControls={canCustomizeWatermark ? watermarkControls : undefined}
       />
       {/* Phase 6 — AI Assistant Floating Panel & Upgrade Modal */}
       <AIAssistantPanel />

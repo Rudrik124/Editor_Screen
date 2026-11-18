@@ -1,5 +1,16 @@
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import List, Dict, Optional, Literal
+
+@dataclass(frozen=True)
+class RenderWatermark:
+    """Server-resolved image and normalized placement for a single render."""
+
+    path: Path
+    x: float
+    y: float
+    width: float
+    opacity: float
 
 @dataclass
 class FilterStream:

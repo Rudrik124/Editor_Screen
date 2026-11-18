@@ -8,6 +8,7 @@ from fastapi import HTTPException, status
 from app.core.config import settings
 from app.db.export_repository import ExportRepository
 from app.engine.compiler import TimelineCompiler
+from app.engine.models import RenderWatermark
 from app.runners.ffmpeg_runner import FFmpegRunner
 from app.schemas.job import RenderJob, JobStatus, ProgressMessage
 from app.schemas.timeline import TimelineExportRequest
@@ -26,7 +27,8 @@ class JobQueue:
     async def submit_render(
         self,
         request: TimelineExportRequest,
-        user_id: str
+        user_id: str,
+        watermark: RenderWatermark | None = None,
     ) -> RenderJob:
         # 1. Enforce per-user concurrency quota
         active_count = self._active_user_jobs.get(user_id, 0)
@@ -59,7 +61,7 @@ class JobQueue:
         self._active_user_jobs[user_id] = active_count + 1
 
         # Spawn asynchronous render background task
-        asyncio.create_task(self._process_render(job, request, str(output_path), user_id))
+        asyncio.create_task(self._process_render(job, request, str(output_path), user_id, watermark))
         return job
 
     async def _process_render(
@@ -67,7 +69,8 @@ class JobQueue:
         job: RenderJob,
         request: TimelineExportRequest,
         output_filepath: str,
-        user_id: str
+        user_id: str,
+        watermark: RenderWatermark | None,
     ):
         async with self._semaphore:
             job.status = JobStatus.PROCESSING
@@ -79,7 +82,7 @@ class JobQueue:
 
             try:
                 # 1. Compile timeline into FFmpeg arguments
-                cmd, duration = self._compiler.compile(request, output_filepath)
+                cmd, duration = self._compiler.compile(request, output_filepath, watermark)
                 job.durationSeconds = duration
 
                 # 2. Progress callback passed to FFmpegRunner

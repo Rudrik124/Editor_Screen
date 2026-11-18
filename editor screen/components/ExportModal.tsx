@@ -13,9 +13,17 @@ import { getExportResolution } from "../utils/exportResolution";
 interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onCustomizeWatermark: () => void;
+  watermarkUploading: boolean;
+  canCustomizeWatermark: boolean | null;
+  watermarkPermissionsError: string | null;
+  onRefreshWatermarkPermissions: () => void;
 }
 
-export function ExportModal({ isOpen, onClose }: ExportModalProps) {
+export function ExportModal({
+  isOpen, onClose, onCustomizeWatermark, watermarkUploading, canCustomizeWatermark,
+  watermarkPermissionsError, onRefreshWatermarkPermissions,
+}: ExportModalProps) {
   const [quality, setQuality] = useState<"draft" | "standard" | "high">("standard");
   const [fps, setFps] = useState<number>(30);
   const [isExporting, setIsExporting] = useState<boolean>(false);
@@ -28,12 +36,11 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
   const pollingIntervalRef = useRef<number | null>(null);
   const tracks = useEditorStore((state) => state.tracks);
   const clips = useEditorStore((state) => state.clips);
+  const watermark = useEditorStore((state) => state.watermark);
 
   useEffect(() => {
     if (!isOpen) return;
 
-    setQuality("standard");
-    setFps(30);
     setIsExporting(false);
     setProgress(0);
     setJobStatus("IDLE");
@@ -67,6 +74,7 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
       resolution: getExportResolution(baseDims, quality),
       fps,
       coverUrl: state.coverUrl || undefined,
+      watermark: state.watermark,
     };
 
     try {
@@ -199,6 +207,35 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
             </>
           )}
 
+          {!isExporting && jobStatus !== "COMPLETED" && (
+            <div className="export-watermark-settings">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={canCustomizeWatermark === true ? watermark.enabled : true}
+                  disabled={canCustomizeWatermark !== true}
+                  onChange={(event) => useEditorStore.getState().setWatermark({
+                    ...watermark,
+                    enabled: event.currentTarget.checked,
+                  })}
+                />
+                Watermark Enabled
+              </label>
+              <button type="button" disabled={canCustomizeWatermark !== true} onClick={onCustomizeWatermark}>
+                Customize Watermark
+              </button>
+              {canCustomizeWatermark === false && <p>Custom watermarks and removal require Premium.</p>}
+              {canCustomizeWatermark === null && !watermarkPermissionsError && <p role="status">Checking watermark permissions…</p>}
+              {watermarkPermissionsError && (
+                <p role="alert">
+                  {watermarkPermissionsError}{" "}
+                  <button type="button" onClick={onRefreshWatermarkPermissions}>Retry</button>
+                </p>
+              )}
+              {watermarkUploading && <p role="status">Uploading watermark…</p>}
+            </div>
+          )}
+
           {(isExporting || jobStatus === "PROCESSING" || jobStatus === "STARTING") && (
             <div className="render-progress-section">
               <div className="progress-info">
@@ -252,7 +289,7 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
               <button
                 className="submit-export-btn"
                 onClick={handleStartExport}
-                disabled={isExporting}
+                disabled={isExporting || watermarkUploading || canCustomizeWatermark === null}
               >
                 {isExporting ? "Exporting..." : "Start Export"}
               </button>

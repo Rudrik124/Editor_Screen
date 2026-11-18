@@ -1,16 +1,25 @@
 from pathlib import Path
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from starlette.concurrency import run_in_threadpool
 from app.core.dependencies import get_current_user_id
 from app.core.security import resolve_safe_path
 from app.core.config import settings
+from app.core.watermark_policy import can_customize_watermark, resolve_render_watermark
 from app.db.export_repository import ExportRepository
 from app.queue.job_queue import job_queue
 from app.queue.connection_manager import ws_manager
-from app.schemas.job import RenderJob
+from app.schemas.job import JobStatus, RenderJob
 from app.schemas.timeline import TimelineExportRequest
 
 router = APIRouter(prefix="/render", tags=["Render"])
+
+@router.get("/capabilities")
+def get_render_capabilities(user_id: str = Depends(get_current_user_id)):
+    return JSONResponse(
+        {"canCustomizeWatermark": can_customize_watermark(user_id)},
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 @router.post("", response_model=RenderJob)
 async def create_render_job(
@@ -26,7 +35,8 @@ async def create_render_job(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot render an empty timeline with 0 clips."
         )
-    return await job_queue.submit_render(request, user_id)
+    watermark = await run_in_threadpool(resolve_render_watermark, request.watermark, user_id)
+    return await job_queue.submit_render(request, user_id, watermark)
 
 @router.get("/jobs/{job_id}", response_model=RenderJob)
 async def get_job_status(job_id: str):
@@ -43,7 +53,7 @@ async def get_job_status(job_id: str):
 async def download_rendered_video(job_id: str):
     """Serves the rendered MP4 video file safely."""
     job = await ExportRepository.get_export(job_id)
-    if not job or not job.outputFile:
+    if not job or job.status != JobStatus.COMPLETED or not job.outputFile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Render job '{job_id}' not found."
@@ -51,7 +61,7 @@ async def download_rendered_video(job_id: str):
 
     # Secure sandbox check: ensures path is strictly within EXPORT_DIR
     target = resolve_safe_path(settings.EXPORT_DIR, Path(job.outputFile).name)
-    if not target.exists():
+    if not target.is_file():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Rendered video file is not ready or does not exist."

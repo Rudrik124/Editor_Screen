@@ -71,10 +71,29 @@ describe("render API errors", () => {
       quality: "standard",
       resolution: { width: 1920, height: 1080 },
       fps: 30,
+      watermark: {
+        enabled: false,
+        source: "custom",
+        assetId: "owned-logo",
+        previewUrl: "/uploads/logo.png",
+        x: 0.1,
+        y: 0.2,
+        width: 0.15,
+        opacity: 0.7,
+      },
     });
 
     expect(capturedBody).not.toBeNull();
     expect(capturedBody.clips).toHaveLength(1);
+    expect(capturedBody.watermark).toEqual({
+      enabled: false,
+      source: "custom",
+      assetId: "owned-logo",
+      x: 0.1,
+      y: 0.2,
+      width: 0.15,
+      opacity: 0.7,
+    });
     expect(capturedBody.clips[0].textData).toEqual({
       content: "Sub test",
       fontSize: 32,

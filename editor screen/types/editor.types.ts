@@ -1,3 +1,17 @@
+export interface WatermarkGeometry {
+  x: number;
+  y: number;
+  width: number;
+}
+
+export type WatermarkSettings = WatermarkGeometry & {
+  enabled: boolean;
+  opacity: number;
+} & (
+  | { source: "official" }
+  | { source: "custom"; assetId: string; previewUrl: string }
+);
+
 export type IconName =
   | "audio"
   | "crop"

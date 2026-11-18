@@ -1,8 +1,9 @@
 import { create } from "zustand";
-import { AspectRatio, ClipModel, TrackModel } from "../types/editor.types";
+import { AspectRatio, ClipModel, TrackModel, WatermarkSettings } from "../types/editor.types";
 import { EditorCommand } from "../types/command.types";
 import { executeCommandMutation } from "./command.executor";
 import { DEFAULT_SAMPLE_MEDIA } from "../data/sampleMedia";
+import { restoreWatermark } from "../utils/watermarkGeometry";
 
 // Phase 3: Layering, Transitions, Keyframes, Cover, Ratio, Replace enabled
 
@@ -17,6 +18,7 @@ export interface EditorStoreState {
   isPlaying: boolean;
   aspectRatio: AspectRatio;
   coverUrl: string | null;
+  watermark: WatermarkSettings;
   history: EditorCommand[];
   future: EditorCommand[];
   historyLimit: number;
@@ -32,6 +34,7 @@ export interface EditorStoreState {
   setIsPlaying: (isPlaying: boolean) => void;
   setAspectRatio: (aspectRatio: AspectRatio) => void;
   setCoverUrl: (coverUrl: string | null) => void;
+  setWatermark: (watermark: WatermarkSettings) => void;
   setTracksAndClips: (
     tracks: TrackModel[],
     clips: Record<string, ClipModel>
@@ -58,12 +61,14 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
   isPlaying: false,
   aspectRatio: "16:9",
   coverUrl: null,
+  watermark: restoreWatermark(undefined),
   history: [],
   future: [],
   historyLimit: 50,
 
   setAspectRatio: (aspectRatio: AspectRatio) => set({ aspectRatio }),
   setCoverUrl: (coverUrl: string | null) => set({ coverUrl }),
+  setWatermark: (watermark) => set({ watermark: restoreWatermark(watermark) }),
 
   dispatch: (command: EditorCommand): boolean => {
     const state = get();

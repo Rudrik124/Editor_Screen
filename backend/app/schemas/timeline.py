@@ -1,5 +1,6 @@
 from typing import List, Optional, Literal, Dict, Any
-from pydantic import BaseModel, Field
+from uuid import UUID
+from pydantic import BaseModel, Field, model_validator
 
 class TransitionSchema(BaseModel):
     type: str = "fade"  # fade, wipeleft, wiperight, dissolve, slideup, slidedown, circlecrop
@@ -66,6 +67,22 @@ class TrackSchema(BaseModel):
     hidden: bool = False
     locked: bool = False
 
+class WatermarkExportSettings(BaseModel):
+    enabled: bool
+    source: Literal["official", "custom"]
+    assetId: Optional[UUID] = None
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    width: float = Field(ge=0.03, le=0.6)
+    opacity: float = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def require_custom_asset(self):
+        if self.enabled and self.source == "custom" and self.assetId is None:
+            raise ValueError("Select a custom watermark asset")
+        return self
+
+
 class TimelineExportRequest(BaseModel):
     projectId: Optional[str] = None
     tracks: List[TrackSchema]
@@ -75,3 +92,4 @@ class TimelineExportRequest(BaseModel):
     height: int = Field(default=1080, ge=240, le=2160)
     quality: Literal["draft", "standard", "high"] = "standard"
     coverUrl: Optional[str] = None
+    watermark: Optional[WatermarkExportSettings] = None

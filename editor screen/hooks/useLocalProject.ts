@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useEditorStore } from "../store/editor.store";
 import { ClipModel, TrackModel } from "../types/editor.types";
+import { restoreWatermark } from "../utils/watermarkGeometry";
 
 const KEY = "veytrix-editor-project-v1";
 
@@ -18,6 +19,7 @@ export function useLocalProject() {
           !Object.values(clips).every(c => typeof c.id === "string" && Number.isFinite(c.start) && Number.isFinite(c.duration) && c.duration > 0)) throw new Error("Invalid project");
         useEditorStore.setState({ tracks, clips, duration: Math.max(0, ...Object.values(clips).map(c => c.start + c.duration)),
           history: [], future: [], selectedClipId: null, currentTime: 0,
+          watermark: restoreWatermark(project.watermark),
           ...(["16:9", "9:16", "1:1", "4:5", "21:9"].includes(project.aspectRatio) ? { aspectRatio: project.aspectRatio } : {}) });
       }
       setStatus("Saved locally");
@@ -25,12 +27,22 @@ export function useLocalProject() {
       setStatus("Local project could not be restored");
     }
     const unsubscribe = useEditorStore.subscribe((state, previous) => {
-      if (state.clips === previous.clips && state.tracks === previous.tracks && state.aspectRatio === previous.aspectRatio) return;
+      if (
+        state.clips === previous.clips &&
+        state.tracks === previous.tracks &&
+        state.aspectRatio === previous.aspectRatio &&
+        state.watermark === previous.watermark
+      ) return;
       try {
         const clips = Object.fromEntries(Object.entries(state.clips).map(([id, clip]) => [id, {
           ...clip, mediaUrl: clip.renderMediaUrl || (clip.mediaUrl?.startsWith("blob:") ? undefined : clip.mediaUrl),
         }]));
-        localStorage.setItem(KEY, JSON.stringify({ tracks: state.tracks, clips, aspectRatio: state.aspectRatio }));
+        localStorage.setItem(KEY, JSON.stringify({
+          tracks: state.tracks,
+          clips,
+          aspectRatio: state.aspectRatio,
+          watermark: state.watermark,
+        }));
         setStatus("Saved locally");
       } catch { setStatus("Local save failed"); }
     });

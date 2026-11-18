@@ -35,9 +35,11 @@ interface MobileToolDockProps {
   onAddText: () => void;
   videoAssets: VideoAsset[];
   onAddVideo: (asset: VideoAsset) => void;
+  onSelectWatermark: () => void;
+  watermarkControls?: React.ReactNode;
 }
 
-type MobileSheetType = "none" | "edit" | "media" | "text" | "ratio" | "audio";
+type MobileSheetType = "none" | "edit" | "media" | "text" | "ratio" | "audio" | "watermark";
 
 const RATIO_PRESETS: { ratio: AspectRatio; label: string; icon: React.ReactNode }[] = [
   { ratio: "9:16", label: "9:16 Vertical (TikTok/Reels)", icon: <DeviceMobile size={18} weight="regular" /> },
@@ -52,6 +54,8 @@ export function MobileToolDock({
   onAddText,
   videoAssets,
   onAddVideo,
+  onSelectWatermark,
+  watermarkControls,
 }: MobileToolDockProps) {
   const [activeSheet, setActiveSheet] = useState<MobileSheetType>("none");
   const [transitionOpen, setTransitionOpen] = useState(false);
@@ -118,6 +122,8 @@ export function MobileToolDock({
             <span>Text Overlays</span>
           </>
         );
+      case "watermark":
+        return <span>Watermark</span>;
       default:
         return (
           <>
@@ -208,10 +214,21 @@ export function MobileToolDock({
           </span>
           <span className="dock-label">Cover</span>
         </button>
+        {watermarkControls && <button
+          type="button"
+          className={`dock-btn ${activeSheet === "watermark" ? "active" : ""}`}
+          onClick={() => {
+            onSelectWatermark();
+            setActiveSheet("watermark");
+          }}
+        >
+          <span className="dock-icon"><ImageSquare size={18} weight="regular" /></span>
+          <span className="dock-label">Watermark</span>
+        </button>}
       </nav>
 
       {/* Slide-Up Bottom Drawer Sheet */}
-      {activeSheet !== "none" && (
+      {activeSheet !== "none" && (activeSheet !== "watermark" || watermarkControls) && (
         <div className="mobile-drawer-overlay" onClick={() => setActiveSheet("none")}>
           <div
             className="mobile-drawer-sheet"
@@ -233,6 +250,7 @@ export function MobileToolDock({
 
             {/* Drawer Body Content */}
             <div className="drawer-body">
+              {activeSheet === "watermark" && watermarkControls}
               {/* EDIT SHEET */}
               {activeSheet === "edit" && (
                 <div className="drawer-actions-grid">

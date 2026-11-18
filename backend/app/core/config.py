@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     STORAGE_DIR: Path = BASE_DIR / "storage"
     UPLOAD_DIR: Path = STORAGE_DIR / "uploads"
     EXPORT_DIR: Path = STORAGE_DIR / "exports"
+    OFFICIAL_WATERMARK_PATH: Path = Path(__file__).resolve().parents[1] / "brand" / "veytrix-watermark.png"
 
     # CORS Configuration
     ALLOWED_ORIGINS: Union[List[str], str] = "http://localhost:3000,http://localhost:5173,http://localhost:8000"
@@ -83,6 +84,9 @@ class Settings(BaseSettings):
     GLOBAL_MAX_CONCURRENT_RENDERS: int = 4
     MAX_RENDER_TIMEOUT_SECONDS: int = 600  # 10 minutes max per export
     MAX_UPLOAD_SIZE_BYTES: int = 500 * 1024 * 1024  # 500 MB
+    MAX_WATERMARK_UPLOAD_BYTES: int = 5 * 1024 * 1024
+    MAX_WATERMARK_DIMENSION: int = 2048
+    WATERMARK_SUBSCRIPTIONS_ENABLED: bool = False
 
     # FFmpeg Binary Locator
     FFMPEG_PATH: str = ""

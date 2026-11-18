@@ -11,7 +11,17 @@ import { KeyboardShortcutsModal } from "./KeyboardShortcutsModal";
 import { useEditorStore } from "../store/editor.store";
 import "../styles/export-modal.css";
 
-export function EditorHeader({ saveStatus }: { saveStatus: string }) {
+export function EditorHeader({
+  saveStatus, onCustomizeWatermark, watermarkUploading, canCustomizeWatermark,
+  watermarkPermissionsError, onRefreshWatermarkPermissions,
+}: {
+  saveStatus: string;
+  onCustomizeWatermark: () => void;
+  watermarkUploading: boolean;
+  canCustomizeWatermark: boolean | null;
+  watermarkPermissionsError: string | null;
+  onRefreshWatermarkPermissions: () => void;
+}) {
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [projectName, setProjectName] = useState("Veytrix Cut");
@@ -99,7 +109,10 @@ export function EditorHeader({ saveStatus }: { saveStatus: string }) {
 
           <button
             className="header-export-btn"
-            onClick={() => setIsExportOpen(true)}
+            onClick={() => {
+              onRefreshWatermarkPermissions();
+              setIsExportOpen(true);
+            }}
             id="header-export-trigger"
           >
             <Export size={15} weight="bold" />
@@ -113,6 +126,14 @@ export function EditorHeader({ saveStatus }: { saveStatus: string }) {
       <ExportModal
         isOpen={isExportOpen}
         onClose={() => setIsExportOpen(false)}
+        onCustomizeWatermark={() => {
+          setIsExportOpen(false);
+          onCustomizeWatermark();
+        }}
+        watermarkUploading={watermarkUploading}
+        canCustomizeWatermark={canCustomizeWatermark}
+        watermarkPermissionsError={watermarkPermissionsError}
+        onRefreshWatermarkPermissions={onRefreshWatermarkPermissions}
       />
 
       <KeyboardShortcutsModal

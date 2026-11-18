@@ -3,13 +3,14 @@ import os
 from pathlib import Path
 from typing import List, Tuple, Dict, Any, Optional
 from app.core.config import settings
-from app.engine.models import CompilationContext, FilterStream, FilterNode
+from app.engine.models import CompilationContext, FilterStream, FilterNode, RenderWatermark
 from app.engine.plugins.trim_speed import TrimSpeedPlugin
 from app.engine.plugins.filters_color import ColorFilterPlugin
 from app.engine.plugins.effects import EffectsPlugin
 from app.engine.plugins.audio import AudioPlugin
 from app.engine.plugins.text_subtitles import TextSubtitlePlugin
 from app.engine.plugins.transitions import TransitionPlugin
+from app.engine.plugins.watermark import apply_watermark
 from app.schemas.timeline import TimelineExportRequest, ClipSchema, TrackSchema
 
 class TimelineCompiler:
@@ -29,7 +30,8 @@ class TimelineCompiler:
     def compile(
         self,
         request: TimelineExportRequest,
-        output_filepath: str
+        output_filepath: str,
+        watermark: RenderWatermark | None = None,
     ) -> Tuple[List[str], float]:
         """
         Compiles TimelineExportRequest into command arguments and total duration.
@@ -498,6 +500,10 @@ class TimelineCompiler:
                 current_canvas = next_canvas
 
         master_video_stream = current_canvas
+        if watermark is not None:
+            master_video_stream = apply_watermark(context, master_video_stream, watermark)
+        elif request.watermark and request.watermark.enabled:
+            raise ValueError("The export watermark could not be resolved.")
 
         # 4. Mix Audio Streams
         master_audio_stream = AudioPlugin.mix_audio_streams(context, audio_streams)

@@ -32,6 +32,7 @@ import { ClosedCaptioning } from "@phosphor-icons/react";
 import { EffectsPanel } from "../plugins/effects/EffectsPanel";
 
 interface RightInspectorProps {
+  watermarkControls?: React.ReactNode;
   selectedText?: TextElement;
   onUpdateText: (id: string, changes: Partial<TextElement>) => void;
   onDeleteText: (id: string) => void;
@@ -43,6 +44,7 @@ export function RightInspector({
   selectedText,
   onUpdateText,
   onDeleteText,
+  watermarkControls,
 }: RightInspectorProps) {
   const [activeTab, setActiveTab] = useState<ClipTab>("transform");
   const [coverModalOpen, setCoverModalOpen] = useState(false);
@@ -60,7 +62,14 @@ export function RightInspector({
   return (
     <aside className="right-side panel">
       {/* 1. TEXT SELECTED */}
-      {selectedText ? (
+      {watermarkControls ? (
+        <div className="inspector-content">
+          <div className="inspector-header">
+            <span className="inspector-header-title">Watermark</span>
+          </div>
+          <div className="inspector-body">{watermarkControls}</div>
+        </div>
+      ) : selectedText ? (
         <div className="inspector-content text-inspector-content">
           <div className="inspector-header">
             <span className="inspector-header-title">
