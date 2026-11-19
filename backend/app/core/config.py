@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import List, Union
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -91,6 +92,7 @@ class Settings(BaseSettings):
     # FFmpeg Binary Locator
     FFMPEG_PATH: str = ""
     FFMPEG_BINARY: str = ""
+    FFPROBE_PATH: str = ""
 
     # AI Assistant (Phase 6)
     GEMINI_API_KEY: str = ""
@@ -114,6 +116,16 @@ class Settings(BaseSettings):
         if local_bin.exists():
             return str(local_bin)
         return "ffmpeg"
+
+    def get_ffprobe_path(self) -> str:
+        if self.FFPROBE_PATH:
+            return self.FFPROBE_PATH
+        executable = "ffprobe.exe" if os.name == "nt" else "ffprobe"
+        for directory in (Path(self.get_ffmpeg_path()).parent, self.BASE_DIR / "bin"):
+            candidate = directory.resolve() / executable
+            if candidate.is_file():
+                return str(candidate)
+        return executable
 
     def setup_directories(self) -> None:
         """Ensure all storage folders exist."""

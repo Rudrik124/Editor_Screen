@@ -16,7 +16,8 @@ def _run_ffmpeg_probe(cmd: list[str]) -> str:
         text=True,
         encoding="utf-8",
         errors="replace",
-        check=False
+        check=False,
+        timeout=15,
     )
     return result.stderr
 

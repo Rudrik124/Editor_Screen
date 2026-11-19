@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import subprocess
 from typing import Callable, Optional, Awaitable
 
 logger = logging.getLogger("veytrix.ffmpeg_runner")
@@ -32,36 +31,25 @@ class FFmpegRunner:
                 stderr=asyncio.subprocess.PIPE
             )
         except NotImplementedError:
-            logger.warning(
-                "Async subprocesses are unavailable on this event loop; "
-                "using the Windows-compatible synchronous FFmpeg fallback."
-            )
-            try:
-                result = await asyncio.to_thread(
-                    subprocess.run,
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    timeout=timeout_seconds,
-                    check=False,
-                )
-            except subprocess.TimeoutExpired as error:
-                raise TimeoutError(
-                    f"Render exceeded maximum timeout of {timeout_seconds}s"
-                ) from error
+            if not hasattr(asyncio, "ProactorEventLoop"):
+                raise
+            # Uvicorn's Windows reload loop can use a selector, which cannot spawn subprocesses.
+            caller_loop = asyncio.get_running_loop()
 
-            if result.returncode != 0:
-                error_output = result.stderr.decode("utf-8", errors="replace")[-2000:].strip()
-                if not error_output:
-                    error_output = (
-                        f"FFmpeg exited with code {result.returncode} "
-                        "without diagnostic output."
-                    )
-                raise RuntimeError(f"FFmpeg render process failed: {error_output}")
+            async def relay(pct, frame, fps):
+                update = asyncio.run_coroutine_threadsafe(progress_callback(pct, frame, fps), caller_loop)
+                await asyncio.wrap_future(update)
 
-            if progress_callback:
-                await progress_callback(100, None, None)
-            return True
+            def run_on_proactor():
+                loop = asyncio.ProactorEventLoop()
+                try:
+                    return loop.run_until_complete(FFmpegRunner.run(
+                        cmd, total_duration_seconds, relay if progress_callback else None, timeout_seconds
+                    ))
+                finally:
+                    loop.close()
+
+            return await asyncio.to_thread(run_on_proactor)
 
         stderr_chunks: list[bytes] = []
 
@@ -69,60 +57,26 @@ class FFmpegRunner:
             buffer = ""
             current_frame = 0
             current_fps = 0.0
-            last_reported_pct = -1
-            
-            while True:
-                chunk = await process.stdout.read(4096)
-                if not chunk:
-                    break
-                buffer += chunk.decode("utf-8", errors="replace")
-                lines = buffer.split("\n")
-                buffer = lines.pop()  # Retain partial trailing line
-
-                for raw_line in lines:
-                    line = raw_line.strip()
-                    if not line:
-                        continue
-
-                    # Progress output format from -progress pipe:1:
-                    # frame=120
-                    # fps=30.0
-                    # out_time_us=4000000
-                    # progress=continue/end
-                    if line.startswith("frame="):
-                        try:
-                            current_frame = int(line.split("=")[1].strip())
-                        except ValueError:
-                            pass
-                    elif line.startswith("fps="):
-                        try:
-                            current_fps = float(line.split("=")[1].strip())
-                        except ValueError:
-                            pass
-                    elif line.startswith("out_time_us="):
-                        try:
-                            time_us = int(line.split("=")[1].strip())
-                            pct = min(100, max(0, int((time_us / total_duration_us) * 100)))
-                            if pct != last_reported_pct and progress_callback:
-                                last_reported_pct = pct
-                                await progress_callback(pct, current_frame, current_fps)
-                        except ValueError:
-                            pass
-                    elif line.startswith("out_time_ms="):
-                        try:
-                            time_val = int(line.split("=")[1].strip())
-                            if time_val > total_duration_seconds * 1000:
-                                pct = min(100, max(0, int((time_val / total_duration_us) * 100)))
-                            else:
-                                pct = min(100, max(0, int((time_val / (total_duration_seconds * 1000)) * 100)))
-                            if pct != last_reported_pct and progress_callback:
-                                last_reported_pct = pct
-                                await progress_callback(pct, current_frame, current_fps)
-                        except ValueError:
-                            pass
-                    elif line == "progress=end":
-                        if progress_callback:
-                            await progress_callback(100, current_frame, current_fps)
+            last_report = None
+            time_us = 0
+            while raw_line := await process.stdout.readline():
+                key, _, value = raw_line.decode("utf-8", errors="replace").strip().partition("=")
+                try:
+                    if key == "frame":
+                        current_frame = int(value)
+                    elif key == "fps":
+                        current_fps = float(value)
+                    elif key in ("out_time_us", "out_time_ms"):
+                        # FFmpeg's older out_time_ms field is also expressed in microseconds.
+                        time_us = int(value)
+                except ValueError:
+                    continue
+                if key == "progress" and progress_callback:
+                    pct = 100 if value == "end" else min(99, max(0, int(100 * time_us / total_duration_us)))
+                    report = (pct, current_frame, current_fps)
+                    if report != last_report:
+                        await progress_callback(*report)
+                        last_report = report
 
         async def read_stderr():
             while True:
@@ -139,11 +93,13 @@ class FFmpegRunner:
                 timeout=timeout_seconds
             )
         except asyncio.TimeoutError:
-            process.kill()
+            if process.returncode is None:
+                process.kill()
             await process.wait()
             raise TimeoutError(f"Render exceeded maximum timeout of {timeout_seconds}s")
-        except Exception:
-            process.kill()
+        except (Exception, asyncio.CancelledError):
+            if process.returncode is None:
+                process.kill()
             await process.wait()
             raise
 

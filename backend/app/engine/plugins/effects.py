@@ -4,6 +4,11 @@ from app.engine.plugins.base import BasePipelinePlugin
 from app.engine.models import CompilationContext, FilterStream, FilterNode
 from app.schemas.timeline import ClipSchema
 
+ZOOM_EFFECTS = frozenset({
+    "zoom_in", "zoom_out", "zoom_bounce", "pulse", "pop_in", "pop_out", "expand", "collapse",
+})
+
+
 class EffectsPlugin(BasePipelinePlugin):
     """
     Applies motion transforms, zoom animations, rotation, and blur effects for FFmpeg export.
@@ -21,6 +26,12 @@ class EffectsPlugin(BasePipelinePlugin):
         dur = max(0.1, clip.duration)
         cw = getattr(context, "width", 1920)
         ch = getattr(context, "height", 1080)
+        fps = context.fps
+
+        if any(effect.type.lower() in ZOOM_EFFECTS for effect in clip.effects):
+            fps_label = context.generate_label("v_effect_fps")
+            context.add_node(FilterNode("fps", [current_label], [fps_label], {"fps": str(fps)}))
+            current_label = fps_label
 
         for eff in clip.effects:
             etype = eff.type.lower()
@@ -60,12 +71,12 @@ class EffectsPlugin(BasePipelinePlugin):
                     inputs=[current_label],
                     outputs=[out_label],
                     args={
-                        "z": f"min(1.0+({zoom}-1.0)*(on/({dur}*30)),{zoom})",
+                        "z": f"min(1.0+({zoom}-1.0)*(on/({dur}*{fps})),{zoom})",
                         "d": "1",
                         "x": "iw/2-(iw/zoom/2)",
                         "y": "ih/2-(ih/zoom/2)",
                         "s": f"{cw}x{ch}",
-                        "fps": "30"
+                        "fps": str(fps)
                     }
                 ))
                 current_label = out_label
@@ -79,12 +90,12 @@ class EffectsPlugin(BasePipelinePlugin):
                     inputs=[current_label],
                     outputs=[out_label],
                     args={
-                        "z": f"max(1.0,{zoom}-({zoom}-1.0)*(on/({dur}*30)))",
+                        "z": f"max(1.0,{zoom}-({zoom}-1.0)*(on/({dur}*{fps})))",
                         "d": "1",
                         "x": "iw/2-(iw/zoom/2)",
                         "y": "ih/2-(ih/zoom/2)",
                         "s": f"{cw}x{ch}",
-                        "fps": "30"
+                        "fps": str(fps)
                     }
                 ))
                 current_label = out_label
@@ -121,12 +132,12 @@ class EffectsPlugin(BasePipelinePlugin):
                     inputs=[current_label],
                     outputs=[out_label],
                     args={
-                        "z": f"max(0.01,1.0+{zoom}*exp(-{damping}*on/30)*cos({speed}*on/30))",
+                        "z": f"max(0.01,1.0+{zoom}*exp(-{damping}*on/{fps})*cos({speed}*on/{fps}))",
                         "d": "1",
                         "x": "iw/2-(iw/zoom/2)",
                         "y": "ih/2-(ih/zoom/2)",
                         "s": f"{cw}x{ch}",
-                        "fps": "30"
+                        "fps": str(fps)
                     }
                 ))
                 current_label = out_label
@@ -141,12 +152,12 @@ class EffectsPlugin(BasePipelinePlugin):
                     inputs=[current_label],
                     outputs=[out_label],
                     args={
-                        "z": f"max(0.01,1.0+{intensity}*sin({2.0 * math.pi * speed}*on/30))",
+                        "z": f"max(0.01,1.0+{intensity}*sin({2.0 * math.pi * speed}*on/{fps}))",
                         "d": "1",
                         "x": "iw/2-(iw/zoom/2)",
                         "y": "ih/2-(ih/zoom/2)",
                         "s": f"{cw}x{ch}",
-                        "fps": "30"
+                        "fps": str(fps)
                     }
                 ))
                 current_label = out_label
@@ -160,12 +171,12 @@ class EffectsPlugin(BasePipelinePlugin):
                     inputs=[current_label],
                     outputs=[out_label],
                     args={
-                        "z": f"max(0.01,2.70158*pow(min(1.0,(on/30)*{speed})-1.0,3)+1.70158*pow(min(1.0,(on/30)*{speed})-1.0,2)+1.0)",
+                        "z": f"max(0.01,2.70158*pow(min(1.0,(on/{fps})*{speed})-1.0,3)+1.70158*pow(min(1.0,(on/{fps})*{speed})-1.0,2)+1.0)",
                         "d": "1",
                         "x": "iw/2-(iw/zoom/2)",
                         "y": "ih/2-(ih/zoom/2)",
                         "s": f"{cw}x{ch}",
-                        "fps": "30"
+                        "fps": str(fps)
                     }
                 ))
                 current_label = out_label
@@ -173,19 +184,19 @@ class EffectsPlugin(BasePipelinePlugin):
             # 15. Pop Out
             elif etype == "pop_out":
                 speed = float(p.get("speed", 2.0))
-                st_frame = max(0, int((dur - 0.4) * 30))
+                st_frame = max(0, int((dur - 0.4) * fps))
                 out_label = context.generate_label("v_popout")
                 context.add_node(FilterNode(
                     filter_name="zoompan",
                     inputs=[current_label],
                     outputs=[out_label],
                     args={
-                        "z": f"if(lt(on,{st_frame}),1.0,max(0.01,1.0-(2.70158*pow(min(1.0,(on-{st_frame})/12),3)-1.70158*pow(min(1.0,(on-{st_frame})/12),2))))",
+                        "z": f"if(lt(on,{st_frame}),1.0,max(0.01,1.0-(2.70158*pow(min(1.0,(on-{st_frame})/({fps}*0.4)),3)-1.70158*pow(min(1.0,(on-{st_frame})/({fps}*0.4)),2))))",
                         "d": "1",
                         "x": "iw/2-(iw/zoom/2)",
                         "y": "ih/2-(ih/zoom/2)",
                         "s": f"{cw}x{ch}",
-                        "fps": "30"
+                        "fps": str(fps)
                     }
                 ))
                 current_label = out_label
@@ -194,7 +205,7 @@ class EffectsPlugin(BasePipelinePlugin):
             elif etype == "expand":
                 sx = float(p.get("scaleX", 1.4))
                 duration = float(p.get("duration", 0.6))
-                frames = max(1, int(duration * 30))
+                frames = max(1, int(duration * fps))
                 out_label = context.generate_label("v_expand")
                 context.add_node(FilterNode(
                     filter_name="zoompan",
@@ -206,7 +217,7 @@ class EffectsPlugin(BasePipelinePlugin):
                         "x": "iw/2-(iw/zoom/2)",
                         "y": "ih/2-(ih/zoom/2)",
                         "s": f"{cw}x{ch}",
-                        "fps": "30"
+                        "fps": str(fps)
                     }
                 ))
                 current_label = out_label
@@ -214,8 +225,8 @@ class EffectsPlugin(BasePipelinePlugin):
             # 17. Collapse
             elif etype == "collapse":
                 duration = float(p.get("duration", 0.6))
-                st_frame = max(0, int((dur - duration) * 30))
-                dur_frames = max(1, int(duration * 30))
+                st_frame = max(0, int((dur - duration) * fps))
+                dur_frames = max(1, int(duration * fps))
                 out_label = context.generate_label("v_collapse")
                 context.add_node(FilterNode(
                     filter_name="zoompan",
@@ -227,7 +238,7 @@ class EffectsPlugin(BasePipelinePlugin):
                         "x": "iw/2-(iw/zoom/2)",
                         "y": "ih/2-(ih/zoom/2)",
                         "s": f"{cw}x{ch}",
-                        "fps": "30"
+                        "fps": str(fps)
                     }
                 ))
                 current_label = out_label

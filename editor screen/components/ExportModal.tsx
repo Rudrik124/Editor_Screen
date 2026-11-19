@@ -7,8 +7,11 @@ import {
   ExportSettings,
   RenderJobResponse,
 } from "../services/backendApi";
-import { RatioProcessor } from "../plugins/ratio/ratio.processor";
-import { getExportResolution } from "../utils/exportResolution";
+import {
+  EXPORT_RESOLUTION_PRESETS,
+  getExportResolution,
+  type ExportResolutionPreset,
+} from "../utils/exportResolution";
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -24,10 +27,11 @@ export function ExportModal({
   isOpen, onClose, onCustomizeWatermark, watermarkUploading, canCustomizeWatermark,
   watermarkPermissionsError, onRefreshWatermarkPermissions,
 }: ExportModalProps) {
-  const [quality, setQuality] = useState<"draft" | "standard" | "high">("standard");
+  const [resolutionPreset, setResolutionPreset] = useState<ExportResolutionPreset>("1080p");
   const [fps, setFps] = useState<number>(30);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
+  const [encodedFrames, setEncodedFrames] = useState(0);
   const [jobStatus, setJobStatus] = useState<string>("IDLE");
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -37,12 +41,14 @@ export function ExportModal({
   const tracks = useEditorStore((state) => state.tracks);
   const clips = useEditorStore((state) => state.clips);
   const watermark = useEditorStore((state) => state.watermark);
+  const aspectRatio = useEditorStore((state) => state.aspectRatio);
 
   useEffect(() => {
     if (!isOpen) return;
 
     setIsExporting(false);
     setProgress(0);
+    setEncodedFrames(0);
     setJobStatus("IDLE");
     setDownloadUrl(null);
     setErrorMessage(null);
@@ -62,6 +68,7 @@ export function ExportModal({
   const handleStartExport = async () => {
     setIsExporting(true);
     setProgress(0);
+    setEncodedFrames(0);
     setJobStatus("STARTING");
     setErrorMessage(null);
     setDownloadUrl(null);
@@ -79,11 +86,9 @@ export function ExportModal({
       return;
     }
 
-    const baseDims = RatioProcessor.getDimensions(state.aspectRatio);
-
     const settings: ExportSettings = {
-      quality,
-      resolution: getExportResolution(baseDims, quality),
+      resolutionPreset,
+      aspectRatio: state.aspectRatio,
       fps,
       coverUrl: state.coverUrl || undefined,
       watermark: state.watermark,
@@ -97,7 +102,7 @@ export function ExportModal({
         settings
       );
 
-      setJobStatus("PROCESSING");
+      setJobStatus(job.status);
 
       // Connect WebSocket for real-time progress events
       const rawApi = (import.meta.env.VITE_API_URL as string | undefined) || "http://localhost:8000";
@@ -105,8 +110,7 @@ export function ExportModal({
       let polling = true;
       let consecutiveErrors = 0;
       let consecutive404s = 0;
-      let secondsWithoutProgress = 0;
-      let lastProgress = 0;
+      let pollInFlight = false;
 
       const stopAll = () => {
         polling = false;
@@ -120,9 +124,11 @@ export function ExportModal({
       };
 
       const pollJob = async () => {
-        if (!polling) return;
+        if (!polling || pollInFlight) return;
+        pollInFlight = true;
         try {
           const res = await fetch(`${apiBase}/render/jobs/${job.id}`);
+          if (!polling) return;
           if (res.status === 404) {
             consecutive404s += 1;
             if (consecutive404s >= 4) {
@@ -147,13 +153,10 @@ export function ExportModal({
           consecutiveErrors = 0;
           consecutive404s = 0;
           const current: RenderJobResponse = await res.json();
-          setProgress(current.progress);
+          if (!polling) return;
+          setProgress((previous) => Math.max(previous, current.progress));
+          setEncodedFrames((previous) => Math.max(previous, current.currentFrame ?? 0));
           setJobStatus(current.status);
-
-          if (current.progress > lastProgress) {
-            lastProgress = current.progress;
-            secondsWithoutProgress = 0;
-          }
 
           if (current.status === "COMPLETED") {
             stopAll();
@@ -163,36 +166,29 @@ export function ExportModal({
             setErrorMessage(current.error || "Rendering failed. Check backend terminal for details.");
           }
         } catch (fetchErr) {
+          if (!polling) return;
           consecutiveErrors += 1;
           if (consecutiveErrors >= 6) {
             stopAll();
             setErrorMessage("Cannot connect to backend on http://localhost:8000. Is the server running?");
             setJobStatus("FAILED");
           }
+        } finally {
+          pollInFlight = false;
         }
       };
 
       pollingIntervalRef.current = window.setInterval(() => {
-        if (!polling) return;
-        secondsWithoutProgress += 1;
-        if (secondsWithoutProgress >= 180 && lastProgress === 0) {
-          stopAll();
-          setErrorMessage("Render job timed out waiting for FFmpeg. Check backend terminal logs.");
-          setJobStatus("FAILED");
-          return;
-        }
         void pollJob();
       }, 1000);
 
       wsRef.current = subscribeToJobProgress(
         job.id,
         (msg) => {
-          setProgress(msg.progress);
+          if (!polling) return;
+          setProgress((previous) => Math.max(previous, msg.progress));
+          setEncodedFrames((previous) => Math.max(previous, msg.currentFrame ?? 0));
           setJobStatus(msg.status);
-          if (msg.progress > lastProgress) {
-            lastProgress = msg.progress;
-            secondsWithoutProgress = 0;
-          }
           if (msg.status === "COMPLETED") {
             stopAll();
             setDownloadUrl(`${apiBase}/render/jobs/${job.id}/download`);
@@ -229,24 +225,22 @@ export function ExportModal({
               <div className="setting-group">
                 <label>Resolution Preset</label>
                 <div className="preset-selector">
-                  <button
-                    className={`preset-pill ${quality === "draft" ? "active" : ""}`}
-                    onClick={() => setQuality("draft")}
-                  >
-                    720p (Draft)
-                  </button>
-                  <button
-                    className={`preset-pill ${quality === "standard" ? "active" : ""}`}
-                    onClick={() => setQuality("standard")}
-                  >
-                    1080p Full HD
-                  </button>
-                  <button
-                    className={`preset-pill ${quality === "high" ? "active" : ""}`}
-                    onClick={() => setQuality("high")}
-                  >
-                    4K Ultra HD
-                  </button>
+                  {EXPORT_RESOLUTION_PRESETS.map((preset) => {
+                    const selected = resolutionPreset === preset;
+                    const { width, height } = getExportResolution(aspectRatio, preset);
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        className={`preset-pill ${selected ? "active" : ""}`}
+                        aria-pressed={selected}
+                        onClick={() => setResolutionPreset(preset)}
+                      >
+                        {preset === "4k" ? "4K" : preset}
+                        <small className="preset-dimensions">{width} × {height}</small>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -302,14 +296,14 @@ export function ExportModal({
           {(isExporting || jobStatus === "PROCESSING" || jobStatus === "STARTING") && (
             <div className="render-progress-section">
               <div className="progress-info">
-                <span>Rendering Video...</span>
+                <span>{jobStatus === "PENDING" ? "Queued for export" : progress >= 99 ? "Finishing export" : encodedFrames > 0 ? "Rendering video" : "Preparing video"}</span>
                 <span className="percentage">{progress}%</span>
               </div>
               <div className="progress-track">
                 <div className="progress-fill" style={{ width: `${progress}%` }} />
               </div>
               <p className="status-note">
-                Compiling FFmpeg sub-graphs and stitching media clips...
+                {encodedFrames > 0 && progress < 99 ? `${encodedFrames.toLocaleString()} frames encoded` : null}
               </p>
             </div>
           )}
@@ -323,7 +317,7 @@ export function ExportModal({
               <p>Your video has been rendered and encoded successfully.</p>
               <a
                 href={downloadUrl}
-                download="veytrix_export.mp4"
+                download={`veytrix_render_${resolutionPreset}_export.mp4`}
                 className="download-button"
               >
                 Download Video (.mp4)

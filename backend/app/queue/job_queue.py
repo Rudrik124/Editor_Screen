@@ -10,6 +10,7 @@ from app.db.export_repository import ExportRepository
 from app.engine.compiler import TimelineCompiler
 from app.engine.models import RenderWatermark
 from app.runners.ffmpeg_runner import FFmpegRunner
+from app.runners.export_probe import verify_export
 from app.schemas.job import RenderJob, JobStatus, ProgressMessage
 from app.schemas.timeline import TimelineExportRequest
 from app.queue.connection_manager import ws_manager
@@ -40,9 +41,7 @@ class JobQueue:
 
         job_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
-        output_filename = f"export_{job_id}.mp4"
-        output_path = settings.EXPORT_DIR / output_filename
-        output_url = f"/api/v1/render/jobs/{job_id}/download"
+        output_path = ExportRepository.output_path(job_id, request.resolutionPreset)
 
         job = RenderJob(
             id=job_id,
@@ -50,12 +49,10 @@ class JobQueue:
             userId=user_id,
             status=JobStatus.PENDING,
             progress=0,
-            outputFile=str(output_path),
-            outputUrl=output_url,
             createdAt=now,
             updatedAt=now
         )
-        await ExportRepository.save_export(job)
+        await ExportRepository.save_export(job, persist=False)
 
         # Track active user render
         self._active_user_jobs[user_id] = active_count + 1
@@ -75,25 +72,25 @@ class JobQueue:
         async with self._semaphore:
             job.status = JobStatus.PROCESSING
             job.updatedAt = datetime.now(timezone.utc).isoformat()
-            await ExportRepository.save_export(job)
             await ws_manager.broadcast(job.id, ProgressMessage(
                 jobId=job.id, status=job.status, progress=0
             ).model_dump())
 
+            output_path = Path(output_filepath)
+            temporary_path = output_path.with_suffix(".pending.mp4")
             try:
                 # 1. Compile timeline into FFmpeg arguments
-                cmd, duration = self._compiler.compile(request, output_filepath, watermark)
+                cmd, duration = await asyncio.to_thread(self._compiler.compile, request, str(temporary_path), watermark)
                 job.durationSeconds = duration
 
                 # 2. Progress callback passed to FFmpegRunner
                 async def on_progress(pct: int, frame: Optional[int], fps: Optional[float]):
-                    job.progress = pct
+                    job.progress = max(job.progress, min(pct, 99))
                     job.currentFrame = frame
                     job.fps = fps
                     job.updatedAt = datetime.now(timezone.utc).isoformat()
-                    await ExportRepository.save_export(job)
                     await ws_manager.broadcast(job.id, ProgressMessage(
-                        jobId=job.id, status=job.status, progress=pct, currentFrame=frame, fps=fps
+                        jobId=job.id, status=job.status, progress=job.progress, currentFrame=frame, fps=fps
                     ).model_dump())
 
                 # 3. Execute subprocess
@@ -104,10 +101,13 @@ class JobQueue:
                     timeout_seconds=settings.MAX_RENDER_TIMEOUT_SECONDS
                 )
 
+                await asyncio.to_thread(verify_export, temporary_path, request.width, request.height, request.fps)
+                temporary_path.replace(output_path)
+                job.outputFile = str(output_path)
+                job.outputUrl = f"/api/v1/render/jobs/{job.id}/download"
                 job.status = JobStatus.COMPLETED
                 job.progress = 100
                 job.updatedAt = datetime.now(timezone.utc).isoformat()
-                await ExportRepository.save_export(job)
                 await ws_manager.broadcast(job.id, ProgressMessage(
                     jobId=job.id, status=job.status, progress=100
                 ).model_dump())
@@ -119,14 +119,20 @@ class JobQueue:
                 job.status = JobStatus.FAILED
                 job.error = error_message
                 job.updatedAt = datetime.now(timezone.utc).isoformat()
-                await ExportRepository.save_export(job)
                 await ws_manager.broadcast(job.id, ProgressMessage(
                     jobId=job.id, status=job.status, progress=job.progress, error=str(e)
                 ).model_dump())
 
             finally:
+                try:
+                    temporary_path.unlink(missing_ok=True)
+                except OSError:
+                    logger.warning("Could not remove temporary export for job %s", job.id, exc_info=True)
                 # Decrement active user renders
                 current = self._active_user_jobs.get(user_id, 1)
                 self._active_user_jobs[user_id] = max(0, current - 1)
+
+        # Remote history must not occupy an encoder slot or delay the terminal event.
+        await ExportRepository.save_export(job)
 
 job_queue = JobQueue()

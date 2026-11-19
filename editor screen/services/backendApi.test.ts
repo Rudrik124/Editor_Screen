@@ -26,8 +26,8 @@ describe("render API errors", () => {
 
     await expect(
       submitTimelineRender("project", [], {}, {
-        quality: "standard",
-        resolution: { width: 1920, height: 1080 },
+        resolutionPreset: "1080p",
+        aspectRatio: "16:9",
         fps: 30,
       })
     ).rejects.toThrow(
@@ -68,9 +68,9 @@ describe("render API errors", () => {
     };
 
     await submitTimelineRender("project", [], { "cap-1": captionClip }, {
-      quality: "standard",
-      resolution: { width: 1920, height: 1080 },
-      fps: 30,
+      resolutionPreset: "4k",
+      aspectRatio: "9:16",
+      fps: 60,
       watermark: {
         enabled: false,
         source: "custom",
@@ -84,6 +84,14 @@ describe("render API errors", () => {
     });
 
     expect(capturedBody).not.toBeNull();
+    expect(capturedBody).toMatchObject({
+      resolutionPreset: "4k",
+      aspectRatio: "9:16",
+      fps: 60,
+      quality: "high",
+    });
+    expect(capturedBody).not.toHaveProperty("width");
+    expect(capturedBody).not.toHaveProperty("height");
     expect(capturedBody.clips).toHaveLength(1);
     expect(capturedBody.watermark).toEqual({
       enabled: false,

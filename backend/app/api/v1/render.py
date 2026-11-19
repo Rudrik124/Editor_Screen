@@ -70,7 +70,7 @@ async def download_rendered_video(job_id: str):
     return FileResponse(
         path=str(target),
         media_type="video/mp4",
-        filename=f"veytrix_render_{job_id[:8]}.mp4"
+        filename=ExportRepository.download_filename(job_id, target)
     )
 
 @router.websocket("/jobs/{job_id}/ws")

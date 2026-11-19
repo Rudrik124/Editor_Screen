@@ -3,6 +3,7 @@ import subprocess
 from pathlib import Path
 import pytest
 from app.core.config import settings
+from app.engine.compiler import TimelineCompiler
 from app.queue.job_queue import job_queue
 from app.runners.probe_runner import ProbeRunner
 from app.schemas.timeline import TimelineExportRequest, TrackSchema, ClipSchema
@@ -93,3 +94,49 @@ def test_end_to_end_synthetic_render(tmp_path):
         assert video_streams[0]["height"] == 360
 
     asyncio.run(_run())
+
+
+@pytest.mark.parametrize("preset", ["720p", "1080p"])
+def test_preset_preserves_animated_framing_and_source_display_aspect(tmp_path, preset):
+    ffmpeg = settings.get_ffmpeg_path()
+    source = tmp_path / "anamorphic.mp4"
+    target = tmp_path / "framing.mp4"
+    subprocess.run(
+        [ffmpeg, "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+         "color=white:s=320x240:r=30:d=1,setsar=2", "-c:v", "libx264", str(source)],
+        capture_output=True,
+        check=True,
+    )
+
+    clip = ClipSchema(
+        id="clip", trackId="video", duration=1, mediaUrl=str(source), scale=0.5,
+        positionY=-108,
+        keyframes=[
+            {"timeOffset": 0, "property": "positionX", "value": -192},
+            {"timeOffset": 0.5, "property": "positionX", "value": 192, "interpolation": "easeIn"},
+        ],
+        transition={"type": "cross_dissolve", "duration": 0.2},
+    )
+    request = TimelineExportRequest(
+        tracks=[TrackSchema(id="video", label="Video", type="video")],
+        clips=[clip, clip.model_copy(update={"id": "next", "start": 0.8})],
+        resolutionPreset=preset,
+        aspectRatio="16:9",
+        fps=60,
+    )
+    command, _ = TimelineCompiler().compile(request, str(target))
+    rendered = subprocess.run(command, capture_output=True)
+    assert rendered.returncode == 0, rendered.stderr.decode(errors="replace")
+
+    width, height = request.width, request.height
+    for timestamp, expected_x in [("0.25", 0.45), ("0.55", 0.60)]:
+        frame = subprocess.check_output(
+            [ffmpeg, "-loglevel", "error", "-ss", timestamp, "-i", str(target),
+             "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "gray", "-"]
+        )
+        row_start = int(0.4 * height) * width
+        columns = [x for x, value in enumerate(frame[row_start:row_start + width]) if value > 200]
+        rows = [y for y in range(height) if frame[y * width + width // 2] > 200]
+        assert (columns[0] + columns[-1]) / (2 * width) == pytest.approx(expected_x, abs=0.004)
+        assert (rows[0] + rows[-1]) / (2 * height) == pytest.approx(0.40, abs=0.004)
+        assert len(columns) / len(rows) == pytest.approx(8 / 3, abs=0.03)

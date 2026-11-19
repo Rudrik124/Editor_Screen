@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
-import { ClipModel, TrackModel, WatermarkSettings } from "../types/editor.types";
+import { AspectRatio, ClipModel, TrackModel, WatermarkSettings } from "../types/editor.types";
 import { getAudioPlaybackRate } from "../utils/audioTimeline";
+import type { ExportResolutionPreset } from "../utils/exportResolution";
 
 const RAW_API_URL = (import.meta.env.VITE_API_URL as string | undefined) || "http://localhost:8000";
 export const API_BASE = `${RAW_API_URL.replace(/\/+$/, "")}/api/v1`;
@@ -75,14 +76,21 @@ export async function uploadWatermarkAsset(file: File): Promise<UploadedWatermar
 }
 
 export interface ExportSettings {
-  quality: "draft" | "standard" | "high";
-  resolution: { width: number; height: number };
+  resolutionPreset: ExportResolutionPreset;
+  aspectRatio: AspectRatio;
   fps: number;
   coverUrl?: string | null;
   watermark?: WatermarkSettings;
 }
 
+const ENCODE_QUALITY_BY_PRESET = {
+  "720p": "draft",
+  "1080p": "standard",
+  "4k": "high",
+} as const;
+
 export interface RenderJobResponse {
+  currentFrame?: number | null;
   id: string;
   projectId?: string;
   status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED";
@@ -252,9 +260,9 @@ export async function submitTimelineRender(
         : undefined,
     })),
     fps: settings.fps,
-    width: settings.resolution.width,
-    height: settings.resolution.height,
-    quality: settings.quality,
+    resolutionPreset: settings.resolutionPreset,
+    aspectRatio: settings.aspectRatio,
+    quality: ENCODE_QUALITY_BY_PRESET[settings.resolutionPreset],
     coverUrl: settings.coverUrl || undefined,
   };
 

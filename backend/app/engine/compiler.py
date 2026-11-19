@@ -6,12 +6,29 @@ from app.core.config import settings
 from app.engine.models import CompilationContext, FilterStream, FilterNode, RenderWatermark
 from app.engine.plugins.trim_speed import TrimSpeedPlugin
 from app.engine.plugins.filters_color import ColorFilterPlugin
-from app.engine.plugins.effects import EffectsPlugin
+from app.engine.plugins.effects import EffectsPlugin, ZOOM_EFFECTS
 from app.engine.plugins.audio import AudioPlugin
 from app.engine.plugins.text_subtitles import TextSubtitlePlugin
 from app.engine.plugins.transitions import TransitionPlugin
 from app.engine.plugins.watermark import apply_watermark
 from app.schemas.timeline import TimelineExportRequest, ClipSchema, TrackSchema
+
+# PreviewWorkspace uses these reference canvases for pixel-based transforms.
+EDITOR_REFERENCE_DIMENSIONS = {
+    "16:9": (1920, 1080),
+    "9:16": (1080, 1920),
+    "1:1": (1080, 1080),
+    "4:5": (1080, 1350),
+    "21:9": (2560, 1080),
+}
+
+# CRF, x264 speed preset, and peak video rates (Mbps) at 30 and 60 FPS.
+PRESET_ENCODING = {
+    "720p": (23, "veryfast", 5, 8),
+    "1080p": (22, "fast", 10, 16),
+    "4k": (21, "veryfast", 35, 50),
+}
+
 
 class TimelineCompiler:
     """
@@ -110,9 +127,11 @@ class TimelineCompiler:
             total_duration=total_duration
         )
 
+        audio_by_source: dict[str, bool] = {}
+
         # 1. Base Canvas Generator (Black background matching export dimensions and duration)
         canvas_label = context.generate_label("canvas")
-        context.add_node(FilterNode(
+        background = FilterNode(
             filter_name="color",
             inputs=[],
             outputs=[canvas_label],
@@ -122,7 +141,7 @@ class TimelineCompiler:
                 "r": str(request.fps),
                 "d": str(total_duration)
             }
-        ))
+        )
 
         # 2. Process Clips (sorted by track layer order and start time)
         track_order = {t.id: idx for idx, t in enumerate(request.tracks)}
@@ -139,6 +158,14 @@ class TimelineCompiler:
 
             # Process Video Stream
             if clip.type in ("video", "text", "image"):
+                scale_layer = abs(clip.scale - 1.0) > 0.01
+                target_width = max(2, 2 * round(request.width * clip.scale / 2)) if scale_layer else request.width
+                # Canvas-dependent filters must still see the full canvas before PIP scaling.
+                fit_layer_directly = (
+                    request.resolutionPreset and input_idx is not None and scale_layer
+                    and clip.scale < 1 and clip.type != "text" and not clip.textData
+                    and not (clip.filters or clip.effects or clip.rotation)
+                )
                 if input_idx is not None:
                     raw_v = context.generate_label("v_raw")
                     is_img = clip.type == "image" or (media_path and any(str(media_path).lower().endswith(ext) for ext in ('.png', '.jpg', '.jpeg', '.webp', '.bmp', '.svg')))
@@ -162,16 +189,29 @@ class TimelineCompiler:
                             outputs=[raw_v],
                             args={"pix_fmts": "yuv420p"}
                         ))
-                    # Normalization: Scale, Pad to uniform aspect ratio, setsar, fps
+                    if request.resolutionPreset:
+                        # Trim and buffer temporal effects at source size, before any upscale.
+                        source = FilterStream(name=raw_v, stream_type="video", duration=clip.duration)
+                        raw_v = self.trim_speed_plugin.transform_clip_video(context, clip, source).name
+
+                    fit_width, fit_height = request.width, request.height
+                    if fit_layer_directly:
+                        fit_width = target_width
+                        fit_height = max(2, 2 * round(request.height * fit_width / (2 * request.width)))
+
+                    # Fit by display aspect ratio before padding and setting square pixels.
                     norm_v = context.generate_label("v_norm")
                     context.add_node(FilterNode(
                         filter_name="scale",
                         inputs=[raw_v],
                         outputs=[norm_v + "_scaled"],
                         args={
-                            "w": str(request.width),
-                            "h": str(request.height),
-                            "force_original_aspect_ratio": "decrease"
+                            "w": f"max(2,2*trunc(min({fit_width},{fit_height}*dar)/2))",
+                            "h": f"max(2,2*trunc(min({fit_height},{fit_width}/dar)/2))",
+                        } if request.resolutionPreset else {
+                            "w": str(fit_width),
+                            "h": str(fit_height),
+                            "force_original_aspect_ratio": "decrease",
                         }
                     ))
                     context.add_node(FilterNode(
@@ -179,8 +219,8 @@ class TimelineCompiler:
                         inputs=[norm_v + "_scaled"],
                         outputs=[norm_v + "_padded"],
                         args={
-                            "w": str(request.width),
-                            "h": str(request.height),
+                            "w": str(fit_width),
+                            "h": str(fit_height),
                             "x": "(ow-iw)/2",
                             "y": "(oh-ih)/2"
                         }
@@ -214,20 +254,20 @@ class TimelineCompiler:
                     stream = FilterStream(name=txt_canvas, stream_type="video", duration=clip.duration)
 
                 # Execute Plugin Pipeline in strict sequence
-                stream = self.trim_speed_plugin.transform_clip_video(context, clip, stream)
+                if not request.resolutionPreset or input_idx is None:
+                    stream = self.trim_speed_plugin.transform_clip_video(context, clip, stream)
                 stream = self.color_plugin.transform_clip_video(context, clip, stream)
                 stream = self.effects_plugin.transform_clip_video(context, clip, stream)
                 stream = self.text_plugin.transform_clip_video(context, clip, stream)
 
                 # Phase 3 Transform: Scale (PIP)
-                if clip.scale and abs(clip.scale - 1.0) > 0.01:
+                if scale_layer and not fit_layer_directly:
                     scaled_label = context.generate_label("v_scale")
-                    target_w = max(2, int(round(request.width * clip.scale / 2)) * 2)
                     context.add_node(FilterNode(
                         filter_name="scale",
                         inputs=[stream.name],
                         outputs=[scaled_label],
-                        args={"w": str(target_w), "h": "-1"}
+                        args={"w": str(target_width), "h": "-2" if request.resolutionPreset else "-1"}
                     ))
                     stream = FilterStream(name=scaled_label, stream_type="video", duration=stream.duration)
 
@@ -306,13 +346,16 @@ class TimelineCompiler:
                     "is set on the frontend clip before submitting the render job.",
                     clip.id, clip.type, clip.trackId
                 )
-            has_audio = True
-            if clip.type == "video" and media_path and not str(media_path).startswith(("http://", "https://")):
-                try:
+            if (
+                clip.type == "video" and media_path
+                and not str(media_path).startswith(("http://", "https://"))
+                and not (clip.isFrozen or clip.muted or track_muted)
+            ):
+                if media_path not in audio_by_source:
                     probe = ProbeRunner.probe_sync(media_path)
-                    has_audio = any(s.get("codec_type") == "audio" for s in probe.get("streams", []))
-                except Exception:
-                    has_audio = True
+                    audio_by_source[media_path] = any(
+                        stream.get("codec_type") == "audio" for stream in probe.get("streams", [])
+                    )
 
             if (
                 clip.type in ("video", "audio", "music")
@@ -320,7 +363,7 @@ class TimelineCompiler:
                 and not clip.isFrozen
                 and not clip.muted
                 and not track_muted
-                and has_audio
+                and (clip.type != "video" or audio_by_source.get(media_path, True))
             ):
                 raw_a = context.generate_label("a_raw")
                 context.add_node(FilterNode(
@@ -359,6 +402,14 @@ class TimelineCompiler:
         ordered_tracks = sorted(all_tracks, key=get_track_layer_priority)
 
         current_canvas = canvas_label
+        if request.resolutionPreset and len(video_overlay_streams) == 1:
+            clip, stream = video_overlay_streams[0]
+            if clip.start == 0 and clip.duration == total_duration and self._fills_canvas(clip):
+                current_canvas = self._fit_clip_duration(context, clip, stream).name
+                ordered_tracks = []
+        if current_canvas == canvas_label:
+            context.filter_nodes.insert(0, background)
+
         for track in ordered_tracks:
             track_items = streams_by_track.get(track.id, [])
             if not track_items:
@@ -367,8 +418,14 @@ class TimelineCompiler:
             # Check if this track contains clips with transitions
             has_transitions = any(c.transition for c, _ in track_items)
             if has_transitions and len(track_items) > 1:
+                transition_items = track_items
+                if request.resolutionPreset:
+                    transition_items = [
+                        (clip, self._prepare_transition_clip(context, request, clip, stream))
+                        for clip, stream in track_items
+                    ]
                 composed_track_stream = self.transition_plugin.compose_track_video_clips(
-                    context, track_items
+                    context, transition_items
                 )
                 if composed_track_stream:
                     next_canvas = context.generate_label("canvas")
@@ -403,88 +460,7 @@ class TimelineCompiler:
                 next_canvas = context.generate_label("canvas")
                 enable_expr = f"between(t,{clip.start},{clip.start + clip.duration})"
 
-                # Keyframes support for positionX and positionY
-                pos_x_kfs = [k for k in clip.keyframes if k.property == "positionX"] if clip.keyframes else []
-                pos_y_kfs = [k for k in clip.keyframes if k.property == "positionY"] if clip.keyframes else []
-
-                if pos_x_kfs:
-                    sorted_x = sorted(pos_x_kfs, key=lambda k: k.timeOffset)
-                    expr_parts = []
-                    for i in range(len(sorted_x) - 1):
-                        k1, k2 = sorted_x[i], sorted_x[i+1]
-                        dt = max(0.001, k2.timeOffset - k1.timeOffset)
-                        expr_parts.append(f"if(between(t,{clip.start + k1.timeOffset},{clip.start + k2.timeOffset}),{k1.value}+({k2.value}-{k1.value})*(t-({clip.start + k1.timeOffset}))/{dt}")
-                    x_pos = "".join(expr_parts) + f",{sorted_x[-1].value}" + (")" * len(expr_parts))
-                elif clip.positionX < 0:
-                    target_w = int(round(request.width * clip.scale)) if clip.scale and clip.scale < 0.99 else request.width
-                    x_pos = str(max(0, int((request.width - target_w) / 2 + clip.positionX)))
-                elif clip.positionX == 0 and clip.scale and clip.scale < 0.99 and clip.trackId != "video":
-                    target_w = int(round(request.width * clip.scale))
-                    x_pos = str(int((request.width - target_w) / 2))
-                else:
-                    x_pos = str(int(clip.positionX))
-
-                if pos_y_kfs:
-                    sorted_y = sorted(pos_y_kfs, key=lambda k: k.timeOffset)
-                    expr_parts = []
-                    for i in range(len(sorted_y) - 1):
-                        k1, k2 = sorted_y[i], sorted_y[i+1]
-                        dt = max(0.001, k2.timeOffset - k1.timeOffset)
-                        expr_parts.append(f"if(between(t,{clip.start + k1.timeOffset},{clip.start + k2.timeOffset}),{k1.value}+({k2.value}-{k1.value})*(t-({clip.start + k1.timeOffset}))/{dt}")
-                    y_pos = "".join(expr_parts) + f",{sorted_y[-1].value}" + (")" * len(expr_parts))
-                elif clip.positionY < 0:
-                    target_h = int(round(request.height * clip.scale)) if clip.scale and clip.scale < 0.99 else request.height
-                    y_pos = str(max(0, int((request.height - target_h) / 2 + clip.positionY)))
-                elif clip.positionY == 0 and clip.scale and clip.scale < 0.99 and clip.trackId != "video":
-                    target_h = int(round(request.height * clip.scale))
-                    y_pos = str(int((request.height - target_h) / 2))
-                else:
-                    y_pos = str(int(clip.positionY))
-
-                # Motion / Positional effects displacement in overlay
-                eff_x_offset = []
-                eff_y_offset = []
-                for eff in (clip.effects or []):
-                    etype = eff.type.lower()
-                    p = eff.parameters or {}
-                    st = clip.start
-                    if etype == "move_left":
-                        dist = float(p.get("distance", 200.0))
-                        duration = float(p.get("duration", 0.8))
-                        eff_x_offset.append(f"{dist}*max(0,1-(t-{st})/{duration})")
-                    elif etype == "move_right":
-                        dist = float(p.get("distance", 200.0))
-                        duration = float(p.get("duration", 0.8))
-                        eff_x_offset.append(f"-{dist}*max(0,1-(t-{st})/{duration})")
-                    elif etype == "move_up":
-                        dist = float(p.get("distance", 200.0))
-                        duration = float(p.get("duration", 0.8))
-                        eff_y_offset.append(f"{dist}*max(0,1-(t-{st})/{duration})")
-                    elif etype == "move_down":
-                        dist = float(p.get("distance", 200.0))
-                        duration = float(p.get("duration", 0.8))
-                        eff_y_offset.append(f"-{dist}*max(0,1-(t-{st})/{duration})")
-                    elif etype == "drop":
-                        dist = float(p.get("distance", 300.0))
-                        speed = float(p.get("speed", 2.0))
-                        decay = float(p.get("bounce", 0.6))
-                        eff_y_offset.append(f"-{dist}*cos({speed}*(t-{st}))*exp(-{decay}*(t-{st}))")
-                    elif etype == "bounce":
-                        height = float(p.get("bounceHeight", 80.0))
-                        speed = float(p.get("speed", 2.5))
-                        decay = float(p.get("damping", 1.0))
-                        eff_y_offset.append(f"-{height}*abs(cos({speed}*(t-{st})))*exp(-{decay}*(t-{st}))")
-                    elif etype == "shake_in":
-                        strength = float(p.get("strength", 20.0))
-                        freq = float(p.get("frequency", 15.0))
-                        dur_shake = float(p.get("duration", 0.7))
-                        eff_x_offset.append(f"{strength}*sin((t-{st})*{freq})*max(0,1-(t-{st})/{dur_shake})")
-                        eff_y_offset.append(f"{strength}*cos((t-{st})*{freq}*1.2)*max(0,1-(t-{st})/{dur_shake})")
-
-                if eff_x_offset:
-                    x_pos = f"({x_pos})+" + "+".join(eff_x_offset)
-                if eff_y_offset:
-                    y_pos = f"({y_pos})+" + "+".join(eff_y_offset)
+                x_pos, y_pos = self._overlay_position(request, clip)
 
                 context.add_node(FilterNode(
                     filter_name="overlay",
@@ -537,9 +513,21 @@ class TimelineCompiler:
                 "-b:a", "192k",
             ])
 
-        # Quality settings
+        # Keep the existing encoder settings for explicit-dimension requests.
         crf = "23" if request.quality == "standard" else ("18" if request.quality == "high" else "28")
         preset = "medium" if request.quality == "standard" else ("slow" if request.quality == "high" else "veryfast")
+
+        rate_control = []
+        filter_options = []
+        if request.resolutionPreset:
+            preset_crf, preset, rate_30, rate_60 = PRESET_ENCODING[request.resolutionPreset]
+            crf = str(preset_crf)
+            max_rate = rate_60 if request.fps > 30 else rate_30
+            rate_control = [
+                "-maxrate", f"{max_rate}M", "-bufsize", f"{2 * max_rate}M",
+                "-threads:v", "4",
+            ]
+            filter_options = ["-filter_complex_threads", "2"]
 
         ffmpeg_bin = settings.get_ffmpeg_path()
         cmd = [
@@ -548,11 +536,13 @@ class TimelineCompiler:
             "-nostdin",
             "-loglevel", "warning",
             *input_args,
+            *filter_options,
             "-filter_complex", filter_complex_str,
             *output_maps,
             "-c:v", "libx264",
             "-crf", crf,
             "-preset", preset,
+            *rate_control,
             "-pix_fmt", "yuv420p",
             "-t", str(total_duration),
             "-progress", "pipe:1",
@@ -618,3 +608,176 @@ class TimelineCompiler:
         raise FileNotFoundError(
             f"Media source '{media_url}' is not a readable local file or supported remote URL."
         )
+
+
+    def _prepare_transition_clip(
+        self,
+        context: CompilationContext,
+        request: TimelineExportRequest,
+        clip: ClipSchema,
+        stream: FilterStream,
+    ) -> FilterStream:
+        if self._fills_canvas(clip):
+            return self._fit_clip_duration(context, clip, stream)
+
+        x_pos, y_pos = self._overlay_position(request, clip)
+        canvas = context.generate_label("transition_canvas")
+        anchored = context.generate_label("transition_canvas_pts")
+        output = context.generate_label("transition_clip")
+        context.add_node(FilterNode("color", [], [canvas], {
+            "c": "black", "s": f"{context.width}x{context.height}",
+            "r": str(context.fps), "d": str(clip.duration),
+        }))
+        context.add_node(FilterNode("setpts", [canvas], [anchored], {
+            "expr": f"PTS+({clip.start}/TB)",
+        }))
+        context.add_node(FilterNode("overlay", [anchored, stream.name], [output], {
+            "x": x_pos, "y": y_pos, "eof_action": "pass",
+        }))
+        return FilterStream(name=output, stream_type="video", duration=stream.duration)
+
+    @staticmethod
+    def _fills_canvas(clip: ClipSchema) -> bool:
+        return (
+            clip.type != "text" and abs(clip.scale - 1.0) <= 0.01 and clip.opacity == 1
+            and not (clip.positionX or clip.positionY or clip.rotation)
+            and all(effect.type.lower() in ZOOM_EFFECTS for effect in clip.effects)
+            and not any(key.property in ("positionX", "positionY", "opacity") for key in clip.keyframes)
+        )
+
+    @staticmethod
+    def _fit_clip_duration(context: CompilationContext, clip: ClipSchema, stream: FilterStream) -> FilterStream:
+        # Keep the black tail if the source ends before the timeline clip.
+        fps = context.generate_label("clip_fps")
+        padded = context.generate_label("clip_tail")
+        output = context.generate_label("clip_fitted")
+        context.add_node(FilterNode("fps", [stream.name], [fps], {
+            "fps": str(context.fps), "round": "up",
+        }))
+        context.add_node(FilterNode("tpad", [fps], [padded], {
+            "stop_duration": str(clip.duration), "color": "black",
+        }))
+        context.add_node(FilterNode("trim", [padded], [output], {"duration": str(clip.duration)}))
+        return FilterStream(name=output, stream_type="video", duration=stream.duration)
+
+    @staticmethod
+    def _position_expression(clip: ClipSchema, axis: str) -> str:
+        keyframes = sorted(
+            (key for key in clip.keyframes if key.property == f"position{axis}"),
+            key=lambda key: key.timeOffset,
+        )
+        if not keyframes:
+            return str(getattr(clip, f"position{axis}"))
+
+        expression = str(float(keyframes[-1].value))
+        for first, second in reversed(list(zip(keyframes, keyframes[1:]))):
+            duration = second.timeOffset - first.timeOffset
+            if duration <= 0.0001:
+                continue
+            start = clip.start + first.timeOffset
+            end = clip.start + second.timeOffset
+            progress = f"clip((t-{start})/{duration},0,1)"
+            if second.interpolation == "easeIn":
+                progress = f"pow({progress},2)"
+            elif second.interpolation == "easeOut":
+                progress = f"(1-pow(1-{progress},2))"
+            elif second.interpolation == "easeInOut":
+                progress = f"if(lt({progress},0.5),2*pow({progress},2),1-2*pow(1-{progress},2))"
+            value = float(first.value)
+            delta = float(second.value) - value
+            expression = f"if(lte(t,{end}),{value}+({delta})*{progress},{expression})"
+        return expression
+
+    def _overlay_position(self, request: TimelineExportRequest, clip: ClipSchema) -> tuple[str, str]:
+        width, height = request.width, request.height
+        scale_x = scale_y = 1.0
+        if request.resolutionPreset:
+            reference_width, reference_height = EDITOR_REFERENCE_DIMENSIONS[request.aspectRatio]
+            scale_x = width / reference_width
+            scale_y = height / reference_height
+            x_pos = f"(W-w)/2+({self._position_expression(clip, 'X')})*{scale_x}"
+            y_pos = f"(H-h)/2+({self._position_expression(clip, 'Y')})*{scale_y}"
+        else:
+            # Keyframes support for positionX and positionY
+            pos_x_kfs = [k for k in clip.keyframes if k.property == "positionX"] if clip.keyframes else []
+            pos_y_kfs = [k for k in clip.keyframes if k.property == "positionY"] if clip.keyframes else []
+
+            if pos_x_kfs:
+                sorted_x = sorted(pos_x_kfs, key=lambda k: k.timeOffset)
+                expr_parts = []
+                for i in range(len(sorted_x) - 1):
+                    k1, k2 = sorted_x[i], sorted_x[i+1]
+                    dt = max(0.001, k2.timeOffset - k1.timeOffset)
+                    expr_parts.append(f"if(between(t,{clip.start + k1.timeOffset},{clip.start + k2.timeOffset}),{k1.value}+({k2.value}-{k1.value})*(t-({clip.start + k1.timeOffset}))/{dt}")
+                x_pos = "".join(expr_parts) + f",{sorted_x[-1].value}" + (")" * len(expr_parts))
+            elif clip.positionX < 0:
+                target_w = int(round(width * clip.scale)) if clip.scale and clip.scale < 0.99 else width
+                x_pos = str(max(0, int((width - target_w) / 2 + clip.positionX)))
+            elif clip.positionX == 0 and clip.scale and clip.scale < 0.99 and clip.trackId != "video":
+                target_w = int(round(width * clip.scale))
+                x_pos = str(int((width - target_w) / 2))
+            else:
+                x_pos = str(int(clip.positionX))
+
+            if pos_y_kfs:
+                sorted_y = sorted(pos_y_kfs, key=lambda k: k.timeOffset)
+                expr_parts = []
+                for i in range(len(sorted_y) - 1):
+                    k1, k2 = sorted_y[i], sorted_y[i+1]
+                    dt = max(0.001, k2.timeOffset - k1.timeOffset)
+                    expr_parts.append(f"if(between(t,{clip.start + k1.timeOffset},{clip.start + k2.timeOffset}),{k1.value}+({k2.value}-{k1.value})*(t-({clip.start + k1.timeOffset}))/{dt}")
+                y_pos = "".join(expr_parts) + f",{sorted_y[-1].value}" + (")" * len(expr_parts))
+            elif clip.positionY < 0:
+                target_h = int(round(height * clip.scale)) if clip.scale and clip.scale < 0.99 else height
+                y_pos = str(max(0, int((height - target_h) / 2 + clip.positionY)))
+            elif clip.positionY == 0 and clip.scale and clip.scale < 0.99 and clip.trackId != "video":
+                target_h = int(round(height * clip.scale))
+                y_pos = str(int((height - target_h) / 2))
+            else:
+                y_pos = str(int(clip.positionY))
+
+        # Motion / Positional effects displacement in overlay
+        eff_x_offset = []
+        eff_y_offset = []
+        for eff in (clip.effects or []):
+            etype = eff.type.lower()
+            p = eff.parameters or {}
+            st = clip.start
+            if etype == "move_left":
+                dist = float(p.get("distance", 200.0))
+                duration = float(p.get("duration", 0.8))
+                eff_x_offset.append(f"{dist}*max(0,1-(t-{st})/{duration})")
+            elif etype == "move_right":
+                dist = float(p.get("distance", 200.0))
+                duration = float(p.get("duration", 0.8))
+                eff_x_offset.append(f"-{dist}*max(0,1-(t-{st})/{duration})")
+            elif etype == "move_up":
+                dist = float(p.get("distance", 200.0))
+                duration = float(p.get("duration", 0.8))
+                eff_y_offset.append(f"{dist}*max(0,1-(t-{st})/{duration})")
+            elif etype == "move_down":
+                dist = float(p.get("distance", 200.0))
+                duration = float(p.get("duration", 0.8))
+                eff_y_offset.append(f"-{dist}*max(0,1-(t-{st})/{duration})")
+            elif etype == "drop":
+                dist = float(p.get("distance", 300.0))
+                speed = float(p.get("speed", 2.0))
+                decay = float(p.get("bounce", 0.6))
+                eff_y_offset.append(f"-{dist}*cos({speed}*(t-{st}))*exp(-{decay}*(t-{st}))")
+            elif etype == "bounce":
+                height = float(p.get("bounceHeight", 80.0))
+                speed = float(p.get("speed", 2.5))
+                decay = float(p.get("damping", 1.0))
+                eff_y_offset.append(f"-{height}*abs(cos({speed}*(t-{st})))*exp(-{decay}*(t-{st}))")
+            elif etype == "shake_in":
+                strength = float(p.get("strength", 20.0))
+                freq = float(p.get("frequency", 15.0))
+                dur_shake = float(p.get("duration", 0.7))
+                eff_x_offset.append(f"{strength}*sin((t-{st})*{freq})*max(0,1-(t-{st})/{dur_shake})")
+                eff_y_offset.append(f"{strength}*cos((t-{st})*{freq}*1.2)*max(0,1-(t-{st})/{dur_shake})")
+
+        if eff_x_offset:
+            x_pos = f"({x_pos})+({'+'.join(eff_x_offset)})*{scale_x}"
+        if eff_y_offset:
+            y_pos = f"({y_pos})+({'+'.join(eff_y_offset)})*{scale_y}"
+        return x_pos, y_pos
